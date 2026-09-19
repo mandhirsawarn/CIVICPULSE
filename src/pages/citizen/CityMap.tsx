@@ -335,7 +335,7 @@ const CityMap = () => {
         </div>
 
         <MapContainer center={position} zoom={13} style={{ height: '100%', width: '100%' }}>
-          <MapController center={userLocation || position} trigger={flyTrigger} />
+          <MapController center={position} trigger={flyTrigger} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
