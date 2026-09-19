@@ -6,7 +6,7 @@ import { MapContainer, TileLayer, Marker, Circle, Polyline } from 'react-leaflet
 import 'leaflet/dist/leaflet.css';
 import { useStore } from '../../store/useStore';
 import { analyzeIssue, detectDuplicates } from '../../services/aiService';
-import { AIAnalysis, IssueCategory, Issue } from '../../types';
+import { AIAnalysis, IssueCategory, Issue, Urgency } from '../../types';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -26,10 +26,11 @@ const CATEGORIES = [
 
 const STEPS = [
   { num: '01', title: 'Details' },
-  { num: '02', title: 'Evidence' },
-  { num: '03', title: 'Location' },
-  { num: '04', title: 'AI Review' },
-  { num: '05', title: 'Submit' }
+  { num: '02', title: 'Urgency' },
+  { num: '03', title: 'Evidence' },
+  { num: '04', title: 'Location' },
+  { num: '05', title: 'AI Review' },
+  { num: '06', title: 'Submit' }
 ];
 
 const ReportIssue = () => {
@@ -43,8 +44,10 @@ const ReportIssue = () => {
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState(false);
-  const [locationSource, setLocationSource] = useState<'GPS' | 'Manual'>('GPS');
+  const [locationSource, setLocationSource] = useState<'GPS' | 'Manual' | 'Search'>('GPS');
   const [description, setDescription] = useState('');
+  const [urgency, setUrgency] = useState<Urgency | ''>('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
@@ -104,7 +107,7 @@ const ReportIssue = () => {
   };
 
   useEffect(() => {
-    if (step === 3 && !isLocating && !coordinates && !locationError) {
+    if (step === 4 && !isLocating && !coordinates && !locationError) {
       fetchLiveLocation();
     }
   }, [step]);
@@ -117,12 +120,36 @@ const ReportIssue = () => {
     setLocationError(false);
   };
 
+  const handleSearchLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setIsLocating(true);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const { lat, lon, display_name } = data[0];
+        setCoordinates({ lat: parseFloat(lat), lng: parseFloat(lon) });
+        setLocationStr(display_name);
+        setLocationSource('Search');
+        setLocationError(false);
+      } else {
+        alert("Location not found. Try a different search term.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Search failed.");
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
   const runAnalysis = async () => {
-    setStep(4);
+    setStep(5);
     setIsAnalyzing(true);
     
     const [analysis, dupes] = await Promise.all([
-      analyzeIssue(photo, description),
+      analyzeIssue(photo, description, urgency as Urgency),
       detectDuplicates(coordinates?.lat || 0, coordinates?.lng || 0, (category || 'Other') as IssueCategory, description, issues)
     ]);
     
@@ -145,7 +172,7 @@ const ReportIssue = () => {
         location: {
           lat: coordinates?.lat || 0,
           lng: coordinates?.lng || 0,
-          address: locationStr + (locationSource === 'Manual' ? ' (Manual)' : ''),
+          address: locationStr + (locationSource !== 'GPS' ? ` (${locationSource})` : ''),
           ward: 'Ward 4',
           zone: 'Central'
         },
@@ -153,6 +180,8 @@ const ReportIssue = () => {
         status: 'REPORTED',
         priority: aiResult?.severity || 'MEDIUM',
         priorityScore: aiResult?.priorityScore || 50,
+        citizenUrgency: urgency as Urgency,
+        estimatedResolutionTime: aiResult?.estimatedResolutionTime || '2-5 days',
         reporterId: currentUser?.id || 'user-1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -169,7 +198,7 @@ const ReportIssue = () => {
       });
       
       setStorageError(false);
-      setStep(5);
+      setStep(6);
       setTimeout(() => {
         navigate(`/my-reports`);
       }, 2500);
@@ -188,16 +217,16 @@ const ReportIssue = () => {
   return (
     <div className="max-w-2xl mx-auto py-4 md:py-8">
       {/* Step Indicator */}
-      {step < 5 && (
+      {step < 6 && (
         <div className="mb-8">
           <div className="flex justify-between items-center relative">
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-brand-200 -z-10 rounded-full"></div>
             <div 
               className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-civic-primary -z-10 rounded-full transition-all duration-300"
-              style={{ width: `${((step - 1) / 3) * 100}%` }}
+              style={{ width: `${((step - 1) / 4) * 100}%` }}
             ></div>
             
-            {STEPS.slice(0, 4).map((s, idx) => {
+            {STEPS.slice(0, 5).map((s, idx) => {
               const isActive = step === idx + 1;
               const isPast = step > idx + 1;
               return (
@@ -249,16 +278,17 @@ const ReportIssue = () => {
               </div>
 
               <div className="mt-auto">
-                <label className="block text-sm font-semibold text-civic-text mb-2">Description (Optional)</label>
+                <label className="block text-sm font-semibold text-civic-text mb-2">Description *</label>
                 <textarea
-                  className="w-full p-3 border border-brand-200 rounded-lg bg-brand-50 text-civic-text focus:border-civic-primary focus:ring-1 focus:ring-civic-primary outline-none transition-colors resize-none h-24 mb-6"
+                  className={cn("w-full p-3 border rounded-lg bg-brand-50 text-civic-text focus:border-civic-primary focus:ring-1 focus:ring-civic-primary outline-none transition-colors resize-none h-24 mb-1", !description.trim() ? "border-red-300" : "border-brand-200")}
                   placeholder="Provide additional details... e.g. 'Large pothole near university gate.'"
                   value={description}
                   onChange={e => setDescription(e.target.value)}
                 />
+                {!description.trim() && <p className="text-xs text-red-500 mb-5">Description is required</p>}
                 
-                <div className="flex justify-end">
-                  <Button onClick={() => setStep(2)} disabled={!category} size="lg" className="px-8">
+                <div className="flex justify-end mt-4">
+                  <Button onClick={() => setStep(2)} disabled={!category || !description.trim() || description.trim().length < 5} size="lg" className="px-8">
                     Continue <ChevronRight size={18} className="ml-1" />
                   </Button>
                 </div>
@@ -270,6 +300,51 @@ const ReportIssue = () => {
             <motion.div key="step2" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
                 <button onClick={() => setStep(1)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
+                  <ChevronLeft size={16} className="mr-1" /> Back
+                </button>
+              </div>
+              <PageHeader 
+                title="Urgency" 
+                description="How urgently should this issue be addressed?" 
+                className="mb-6"
+              />
+              
+              <div className="flex flex-col gap-3 flex-1 mb-8">
+                {[
+                  { id: 'URGENT', icon: '🔴', title: 'URGENT', desc: 'Immediate attention required — safety risk or serious public impact', color: 'border-red-200 bg-red-50 text-red-700' },
+                  { id: 'HIGH', icon: '🟠', title: 'HIGH', desc: 'Should be addressed as soon as possible', color: 'border-orange-200 bg-orange-50 text-orange-700' },
+                  { id: 'MODERATE', icon: '🟡', title: 'MODERATE', desc: 'Needs attention but does not require immediate action', color: 'border-yellow-200 bg-yellow-50 text-yellow-700' },
+                  { id: 'LOW', icon: '🟢', title: 'LOW', desc: 'Minor issue that can be addressed during routine maintenance', color: 'border-green-200 bg-green-50 text-green-700' }
+                ].map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => setUrgency(u.id as Urgency)}
+                    className={cn(
+                      "flex items-start text-left p-4 rounded-xl border-2 transition-all hover:-translate-y-1 focus:outline-none",
+                      urgency === u.id ? cn(u.color, "border-opacity-100 shadow-sm") : "border-brand-200 bg-white hover:bg-brand-50"
+                    )}
+                  >
+                    <span className="text-2xl mr-3">{u.icon}</span>
+                    <div>
+                      <h4 className="font-bold text-civic-text mb-1">{u.title}</h4>
+                      <p className="text-sm text-civic-muted">{u.desc}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              
+              <div className="flex justify-end mt-auto pt-4 border-t border-brand-100">
+                <Button onClick={() => setStep(3)} disabled={!urgency} size="lg" className="px-8">
+                  Continue <ChevronRight size={18} className="ml-1" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {step === 3 && (
+            <motion.div key="step3" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
+              <div className="mb-4">
+                <button onClick={() => setStep(2)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </button>
               </div>
@@ -298,8 +373,8 @@ const ReportIssue = () => {
                     <div className="w-16 h-16 bg-white shadow-sm text-civic-primary rounded-full flex items-center justify-center mb-4">
                       <Camera size={32} />
                     </div>
-                    <span className="font-bold text-civic-text mb-1">Click to upload real photo</span>
-                    <span className="text-sm text-civic-muted">Will be analyzed locally</span>
+                    <span className="font-bold text-civic-text mb-1">Take Photo / Upload *</span>
+                    <span className="text-sm text-civic-muted">JPG, PNG, WEBP (Max 5MB)</span>
                     {isCompressing ? (
                       <Loader2 className="animate-spin text-civic-primary mt-2" size={24} />
                     ) : (
@@ -307,30 +382,41 @@ const ReportIssue = () => {
                     )}
                   </label>
                 )}
+                {!photo && <p className="text-xs text-red-500 mt-2 font-medium">Please upload a photo of the issue</p>}
               </div>
               
-              <div className="mt-auto flex justify-between items-center">
-                <Button variant="ghost" onClick={() => setStep(3)}>Skip this step</Button>
-                <Button onClick={() => setStep(3)} size="lg" className="px-8">
+              <div className="flex justify-end mt-auto pt-4 border-t border-brand-100">
+                <Button onClick={() => setStep(4)} disabled={!photo} size="lg" className="px-8">
                   Continue <ChevronRight size={18} className="ml-1" />
                 </Button>
               </div>
             </motion.div>
           )}
 
-          {step === 3 && (
-            <motion.div key="step3" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
+          {step === 4 && (
+            <motion.div key="step4" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
-                <button onClick={() => setStep(2)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
+                <button onClick={() => setStep(3)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </button>
               </div>
-              <div className="flex justify-between items-start mb-6">
+              <div className="flex flex-col mb-4">
                 <PageHeader 
                   title="Location" 
                   description="Pinpoint where the issue is on the map." 
-                  className="mb-0"
+                  className="mb-4"
                 />
+                
+                <form onSubmit={handleSearchLocation} className="flex gap-2 mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search location... e.g. Sector 17 Chandigarh"
+                    className="flex-1 p-3 border border-brand-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-civic-primary"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  <Button type="submit" disabled={isLocating}>Search</Button>
+                </form>
               </div>
               
               <div className="rounded-xl border border-brand-200 h-64 mb-4 relative overflow-hidden bg-brand-50">
@@ -356,10 +442,10 @@ const ReportIssue = () => {
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-white p-6 text-center z-10">
                     <MapPin size={48} className="text-civic-muted mb-4" />
                     <h3 className="text-lg font-bold text-civic-text mb-2">Location Required</h3>
-                    <p className="text-sm text-civic-muted mb-6">Location access is required to show nearby civic issues.</p>
+                    <p className="text-sm text-civic-muted mb-6">Location access is required to report an issue.</p>
                     <div className="flex flex-col gap-3 w-full max-w-xs">
-                      <Button onClick={fetchLiveLocation} className="w-full">Allow Location</Button>
-                      <Button onClick={handleManualLocation} variant="outline" className="w-full">Choose Location Manually</Button>
+                      <Button onClick={fetchLiveLocation} className="w-full">Allow GPS</Button>
+                      <Button onClick={handleManualLocation} variant="outline" className="w-full">Drop Pin Manually</Button>
                     </div>
                   </div>
                 ) : (
@@ -370,17 +456,27 @@ const ReportIssue = () => {
                 )}
               </div>
 
-              <div className="flex items-center gap-3 p-3 bg-brand-50 border border-brand-200 rounded-lg mb-8">
-                <MapPin className="text-civic-primary flex-shrink-0" size={20} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-civic-text truncate">{locationStr}</div>
+              <div className="flex flex-col gap-2 p-3 bg-brand-50 border border-brand-200 rounded-lg mb-8">
+                <div className="flex items-center gap-3">
+                  <MapPin className="text-civic-primary flex-shrink-0" size={20} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-civic-text truncate">{locationStr}</div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={fetchLiveLocation} disabled={isLocating}>
+                    {isLocating ? <Loader2 size={14} className="animate-spin" /> : <Crosshair size={14} />}
+                  </Button>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchLiveLocation} disabled={isLocating}>
-                  {isLocating ? <Loader2 size={14} className="animate-spin" /> : <Crosshair size={14} />}
-                </Button>
+                {coordinates && (
+                  <div className="text-xs text-civic-muted pl-8">
+                    Latitude: {coordinates.lat.toFixed(4)} | Longitude: {coordinates.lng.toFixed(4)}
+                  </div>
+                )}
               </div>
               
-              <div className="mt-auto flex justify-end">
+              <div className="mt-auto flex justify-between">
+                <Button variant="outline" onClick={handleManualLocation} size="lg">
+                  📍 Drop Pin
+                </Button>
                 <Button onClick={runAnalysis} disabled={!coordinates} size="lg" className="px-8 w-full sm:w-auto">
                   Run AI Analysis <ChevronRight size={18} className="ml-1" />
                 </Button>
@@ -388,7 +484,7 @@ const ReportIssue = () => {
             </motion.div>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <motion.div key="step4" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
                 <button onClick={() => setStep(3)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
@@ -434,6 +530,10 @@ const ReportIssue = () => {
                         <div>
                           <span className="text-xs text-civic-muted block mb-1">Recommended Dept</span>
                           <span className="font-semibold text-civic-primary text-sm">{aiResult.suggestedDepartment}</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-civic-muted block mb-1">Citizen Urgency</span>
+                          <span className="font-semibold text-civic-text text-sm">{urgency}</span>
                         </div>
                         <div>
                           <span className="text-xs text-civic-muted block mb-1">Severity</span>
@@ -488,6 +588,25 @@ const ReportIssue = () => {
                           </div>
                         </div>
                       )}
+                      
+                      <div className="mt-6 bg-brand-50 rounded-xl p-5 border border-brand-200 shadow-sm relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-civic-primary"></div>
+                        <h4 className="font-bold text-civic-primary text-sm uppercase tracking-wider mb-4 border-b border-brand-200 pb-2">Report Routing</h4>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-civic-muted">Department:</span>
+                            <span className="font-semibold text-civic-text text-sm flex items-center gap-1">🏢 {aiResult.suggestedDepartment}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-civic-muted">Priority:</span>
+                            <span className="font-semibold text-civic-text text-sm">{urgency}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-civic-muted">Estimated Response:</span>
+                            <span className="font-bold text-civic-primary text-sm bg-civic-primary/10 px-2 py-1 rounded">{aiResult.estimatedResolutionTime || '2-5 days'}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -602,17 +721,26 @@ const ReportIssue = () => {
             </motion.div>
           )}
 
-          {step === 5 && (
-            <motion.div key="step5" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col items-center justify-center h-full py-16 text-center">
-              <div className="w-20 h-20 bg-civic-accent/10 text-civic-accent rounded-full flex items-center justify-center mb-6">
+          {step === 6 && (
+            <motion.div key="step6" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col items-center justify-center h-full py-16 text-center">
+              <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
                 <CheckCircle2 size={40} />
               </div>
-              <h2 className="text-2xl font-bold text-civic-text mb-2">Report Submitted</h2>
-              <p className="text-civic-muted mb-8">Thank you for improving your community. Priority processing initiated.</p>
+              <h2 className="text-2xl font-bold text-civic-text mb-2">Your issue has been successfully reported.</h2>
+              <p className="text-civic-muted mb-8 font-mono bg-brand-50 px-4 py-2 rounded border border-brand-200">Issue ID: CP-XXXX</p>
               
-              <div className="bg-brand-50 border border-brand-200 px-6 py-3 rounded-lg mb-8">
-                <span className="text-xs text-civic-muted block mb-1">Local Edge Intelligence</span>
-                <span className="font-mono font-bold text-civic-primary text-lg">Routing to Dept...</span>
+              <div className="bg-brand-50 border border-brand-200 p-6 rounded-xl mb-8 w-full max-w-sm text-left shadow-sm">
+                <h4 className="font-bold text-civic-text mb-2 border-b border-brand-200 pb-2">AI-assisted analysis completed.</h4>
+                <div className="space-y-3 mt-4">
+                  <div>
+                    <span className="text-xs text-civic-muted block">Your issue has been routed to:</span>
+                    <span className="font-semibold text-civic-primary text-sm">{aiResult?.suggestedDepartment || 'Relevant Department'}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-civic-muted block">Estimated response:</span>
+                    <span className="font-bold text-civic-text text-sm">{aiResult?.estimatedResolutionTime || '2-5 days'}</span>
+                  </div>
+                </div>
               </div>
               
               <p className="text-sm text-civic-muted flex items-center gap-2">

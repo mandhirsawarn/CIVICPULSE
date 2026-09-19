@@ -10,6 +10,19 @@ interface TimelineProps {
 }
 
 export function Timeline({ events, className, horizontal = false }: TimelineProps) {
+  const getTimelineLabel = (status: string) => {
+    switch (status) {
+      case 'REPORTED': return 'REPORT SUBMITTED';
+      case 'AI_VERIFIED': return 'AI ANALYSIS COMPLETED';
+      case 'ASSIGNED': return 'ROUTED TO DEPARTMENT';
+      case 'ACKNOWLEDGED': return 'DEPARTMENT ACKNOWLEDGED';
+      case 'INSPECTION': return 'FIELD INSPECTION';
+      case 'IN_PROGRESS': return 'WORK IN PROGRESS';
+      case 'RESOLVED': return 'RESOLUTION SUBMITTED';
+      case 'CITIZEN_VERIFIED': return 'RESOLVED';
+      default: return status.replace('_', ' ').toUpperCase();
+    }
+  };
   // Sort events chronologically just in case
   const sortedEvents = [...events].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
@@ -30,7 +43,7 @@ export function Timeline({ events, className, horizontal = false }: TimelineProp
                 <CheckCircle2 className="h-4 w-4 text-civic-secondary" />
               </div>
               <div className="mt-3 flex flex-col items-center text-center">
-                <span className="text-sm font-medium text-civic-text">{event.status.replace('_', ' ')}</span>
+                <span className="text-[10px] font-bold text-civic-text tracking-wider uppercase">{getTimelineLabel(event.status)}</span>
                 <span className="mt-1 text-xs text-civic-muted">
                   {new Date(event.timestamp).toLocaleDateString()}
                 </span>
@@ -50,8 +63,8 @@ export function Timeline({ events, className, horizontal = false }: TimelineProp
           <span className="absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 ring-4 ring-white">
             <CheckCircle2 className="h-4 w-4 text-civic-secondary" />
           </span>
-          <h3 className="mb-1 text-sm font-semibold text-civic-text">{event.status.replace('_', ' ')}</h3>
-          <time className="mb-2 block text-xs font-normal leading-none text-civic-muted">
+          <h3 className="mb-1 text-xs font-bold text-civic-text tracking-wider uppercase">{getTimelineLabel(event.status)}</h3>
+          <time className="mb-2 block text-[10px] font-medium leading-none text-civic-muted">
             {new Date(event.timestamp).toLocaleString()} - {event.actor}
           </time>
           <p className="text-sm text-civic-muted">{event.description}</p>

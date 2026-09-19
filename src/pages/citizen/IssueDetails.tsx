@@ -166,35 +166,55 @@ const IssueDetails = () => {
         {/* Sidebar: Right Column */}
         <div className="space-y-6">
           <Card>
-            <h3 className="font-bold text-civic-text mb-4">AI Assessment</h3>
+            <h3 className="font-bold text-civic-text mb-4 uppercase tracking-wider text-sm border-b border-brand-100 pb-2 flex items-center gap-2">
+              <ShieldAlert size={16} className="text-civic-primary" />
+              Resolution Intelligence
+            </h3>
             {issue.aiAnalysis ? (
               <div className="space-y-4">
-                <div className="flex justify-between items-center pb-3 border-b border-brand-100">
-                  <span className="text-sm text-civic-muted">Priority</span>
-                  <Badge variant={issue.aiAnalysis.severity === 'HIGH' ? 'danger' : 'warning'}>
-                    {issue.aiAnalysis.severity}
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center pb-3 border-b border-brand-100">
-                  <span className="text-sm text-civic-muted">Score</span>
-                  <span className="font-bold text-civic-text">{issue.aiAnalysis.priorityScore}/100</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-civic-muted">Category</span>
-                  <span className="font-medium text-sm text-civic-text">{issue.aiAnalysis.detectedCategory}</span>
-                </div>
-                
-                {issue.slaTarget && issue.status === 'IN_PROGRESS' && (
-                  <div className="mt-4 bg-civic-warning/10 border border-civic-warning/20 p-3 rounded-lg flex items-start gap-3">
-                    <Clock size={18} className="text-civic-warning flex-shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-xs font-bold text-civic-warning uppercase tracking-wider block mb-1">Target SLA</span>
-                      <span className="text-sm font-medium text-civic-text">
-                        {new Date(issue.slaTarget).toLocaleString()}
-                      </span>
-                    </div>
+                <div className="grid grid-cols-2 gap-4 pb-3 border-b border-brand-100">
+                  <div>
+                    <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Detected</span>
+                    <span className="font-medium text-sm text-civic-text">{issue.aiAnalysis.detectedCategory}</span>
                   </div>
-                )}
+                  <div>
+                    <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Severity</span>
+                    <Badge variant={issue.aiAnalysis.severity === 'HIGH' ? 'danger' : 'warning'} className="text-xs">
+                      {issue.aiAnalysis.severity}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pb-3 border-b border-brand-100">
+                  <span className="text-sm text-civic-muted font-bold">Priority Score</span>
+                  <span className="font-black text-civic-primary">{issue.priorityScore}/100</span>
+                </div>
+
+                <div className="pb-3 border-b border-brand-100">
+                  <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Recommended Department</span>
+                  <span className="font-medium text-sm text-civic-text flex items-center gap-1">
+                    🏢 {issue.assignedDepartmentId || issue.aiAnalysis.suggestedDepartment}
+                  </span>
+                </div>
+
+                <div className="pb-3 border-b border-brand-100">
+                  <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Estimated Resolution</span>
+                  <span className="font-bold text-sm text-civic-text bg-brand-50 px-2 py-1 rounded border border-brand-200">
+                    {issue.estimatedResolutionTime || '2-5 days'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Status</span>
+                  <span className="font-bold text-sm text-civic-primary">
+                    {issue.status === 'REPORTED' ? 'Pending AI Analysis' : 
+                     issue.status === 'AI_VERIFIED' ? 'Pending Routing' :
+                     issue.status === 'ASSIGNED' ? 'Reported to Department' :
+                     issue.status === 'IN_PROGRESS' ? 'Work in Progress' :
+                     issue.status === 'RESOLVED' ? 'Resolution Submitted' :
+                     issue.status === 'CITIZEN_VERIFIED' ? 'Resolved' : issue.status}
+                  </span>
+                </div>
               </div>
             ) : (
               <p className="text-sm text-civic-muted">No AI assessment available for this issue.</p>

@@ -1,4 +1,4 @@
-import { AIAnalysis, IssueCategory, Severity, Issue } from '../types';
+import { AIAnalysis, IssueCategory, Severity, Issue, Urgency } from '../types';
 
 // Simulate network delay for demo feel
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -94,7 +94,7 @@ const DEPARTMENT_ROUTING: Record<IssueCategory, string> = {
   'Other': 'General Administration'
 };
 
-export const analyzeIssue = async (photoData: string | null, description: string): Promise<AIAnalysis> => {
+export const analyzeIssue = async (photoData: string | null, description: string, citizenUrgency: Urgency): Promise<AIAnalysis> => {
   await delay(1500); // Simulate processing
 
   const text = description.toLowerCase();
@@ -174,6 +174,14 @@ export const analyzeIssue = async (photoData: string | null, description: string
     reasoning.push({ factor: 'Detailed descriptive report', score: 5 });
   }
 
+  if (citizenUrgency === 'URGENT') {
+    priorityScore += 20;
+    reasoning.push({ factor: 'Citizen flagged as URGENT', score: 20 });
+  } else if (citizenUrgency === 'HIGH') {
+    priorityScore += 10;
+    reasoning.push({ factor: 'Citizen flagged as HIGH', score: 10 });
+  }
+
   priorityScore = Math.min(100, priorityScore);
 
   // 4. Confidence Score
@@ -186,6 +194,15 @@ export const analyzeIssue = async (photoData: string | null, description: string
     ...(safetyRisk === 'HIGH' ? ['High Safety Risk'] : [])
   ];
 
+  let estimatedResolutionTime = '5-10 days';
+  if (citizenUrgency === 'URGENT' || priorityScore > 85) {
+    estimatedResolutionTime = '6-24 hours';
+  } else if (citizenUrgency === 'HIGH' || priorityScore > 70) {
+    estimatedResolutionTime = '24-48 hours';
+  } else if (citizenUrgency === 'MODERATE' || priorityScore > 40) {
+    estimatedResolutionTime = '2-5 days';
+  }
+
   return {
     confidence: Math.round(confidence),
     detectedCategory,
@@ -195,7 +212,8 @@ export const analyzeIssue = async (photoData: string | null, description: string
     priorityScore,
     priorityReasoning: reasoning,
     keywords: [...new Set(foundKeywords)],
-    matchedSignals
+    matchedSignals,
+    estimatedResolutionTime
   };
 };
 

@@ -118,26 +118,60 @@ const MyReports = () => {
             <motion.div key={issue.id} variants={itemVariants}>
               <Link to={`/issue/${issue.id}`}>
                 <Card noPadding className="flex items-center gap-4 p-4 hover:border-civic-primary hover:shadow-md transition-all group h-full">
-                  <div className="h-20 w-20 shrink-0 rounded-lg overflow-hidden bg-brand-50 border border-brand-100 flex items-center justify-center">
+                  <div className="h-full w-28 shrink-0 rounded-l-lg overflow-hidden bg-brand-50 border-r border-brand-100 flex items-center justify-center">
                     {issue.photos[0] ? (
                       <img src={issue.photos[0]} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
                     ) : (
                       <MapPin className="text-brand-300" size={24} />
                     )}
                   </div>
-                  <div className="min-w-0 flex-1 py-1">
+                  <div className="min-w-0 flex-1 py-3 pr-3">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-bold text-brand-500 uppercase tracking-wider">{issue.id}</span>
-                      <Badge variant={getStatusVariant(issue.status)} className="text-[10px] px-1.5 py-0">
-                        {issue.status.replace('_', ' ')}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-brand-500 uppercase tracking-wider">{issue.id}</span>
+                        <Badge variant={getStatusVariant(issue.status)} className="text-[10px] px-1.5 py-0">
+                          {issue.status.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                      <span className="text-[10px] text-civic-muted flex items-center gap-1">
+                        <Clock size={10} /> {new Date(issue.createdAt).toLocaleDateString()}
+                      </span>
                     </div>
-                    <p className="truncate font-semibold text-civic-text mb-1">{issue.title}</p>
-                    <div className="flex items-center gap-1 text-xs text-civic-muted">
-                      <Clock size={12} /> {new Date(issue.createdAt).toLocaleDateString()}
+                    
+                    <p className="truncate font-semibold text-civic-text text-sm mb-1">{issue.title}</p>
+                    
+                    <div className="flex items-center gap-1 text-xs text-civic-muted mb-2">
+                      <MapPin size={12} className="flex-shrink-0" />
+                      <span className="truncate">{issue.location.address}</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 mb-2">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] uppercase font-bold text-civic-muted tracking-wider">Category</span>
+                        <span className="text-xs font-semibold text-civic-text">{issue.category}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] uppercase font-bold text-civic-muted tracking-wider">Department</span>
+                        <span className="text-xs font-semibold text-civic-primary truncate">{issue.assignedDepartmentId || 'Pending Routing'}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 p-2 bg-brand-50 rounded-md">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] uppercase font-bold text-civic-muted tracking-wider">Priority / Urgency</span>
+                        <div className="flex items-center gap-1 text-xs font-semibold">
+                          <span className={cn(issue.priorityScore > 75 ? "text-civic-danger" : "text-civic-warning")}>{issue.priorityScore}/100</span>
+                          <span className="text-civic-muted">•</span>
+                          <span className={cn(issue.citizenUrgency === 'URGENT' ? "text-civic-danger" : "text-civic-text")}>{issue.citizenUrgency || 'MEDIUM'}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] uppercase font-bold text-civic-muted tracking-wider">Est. Resolution</span>
+                        <span className="text-xs font-bold text-civic-text">{issue.estimatedResolutionTime || '2-5 days'}</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="pl-2">
+                  <div className="px-3">
                     <ArrowRight className="text-brand-300 group-hover:text-civic-primary transition-colors" size={20} />
                   </div>
                 </Card>

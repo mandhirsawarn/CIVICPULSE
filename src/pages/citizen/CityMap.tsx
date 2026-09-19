@@ -57,6 +57,8 @@ function MapController({ center, trigger }: { center: [number, number] | null, t
 const CityMap = () => {
   const { issues, hotspots } = useStore();
   const [activeFilter, setActiveFilter] = useState('All');
+  const [priorityFilter, setPriorityFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Default center (India center)
   const [position, setPosition] = useState<[number, number]>([20.5937, 78.9629]); 
@@ -92,11 +94,37 @@ const CityMap = () => {
     locateUser();
   }, [locateUser]);
 
+  const handleSearchLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        setPosition([parseFloat(lat), parseFloat(lon)]);
+        setFlyTrigger(prev => prev + 1);
+      } else {
+        alert("Location not found.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Search failed.");
+    }
+  };
+
   const filteredIssues = issues.filter(issue => {
     if (activeFilter !== 'All') {
-      if (['Pothole', 'Garbage', 'Waterlogging', 'Streetlight'].includes(activeFilter) && issue.category !== activeFilter) return false;
+      if (['Pothole', 'Garbage', 'Waterlogging', 'Streetlight', 'Drainage', 'Water Leakage', 'Road Damage'].includes(activeFilter) && issue.category !== activeFilter) return false;
       if (activeFilter === 'Resolved' && issue.status !== 'RESOLVED' && issue.status !== 'CITIZEN_VERIFIED') return false;
       if (activeFilter === 'Active' && (issue.status === 'RESOLVED' || issue.status === 'CITIZEN_VERIFIED')) return false;
+    }
+
+    if (priorityFilter !== 'All') {
+      if (priorityFilter === 'Urgent' && issue.citizenUrgency !== 'URGENT') return false;
+      if (priorityFilter === 'High' && issue.citizenUrgency !== 'HIGH') return false;
+      if (priorityFilter === 'Moderate' && issue.citizenUrgency !== 'MODERATE') return false;
+      if (priorityFilter === 'Low' && issue.citizenUrgency !== 'LOW') return false;
     }
 
     // Distance filtering
@@ -144,7 +172,7 @@ const CityMap = () => {
           <div className="mb-6">
             <h3 className="text-xs font-semibold text-civic-muted uppercase tracking-wider mb-3">Category</h3>
             <div className="flex flex-col gap-2">
-              {['Pothole', 'Garbage', 'Waterlogging', 'Streetlight'].map(filter => (
+              {['Pothole', 'Garbage', 'Waterlogging', 'Streetlight', 'Drainage', 'Water Leakage', 'Road Damage'].map(filter => (
                 <button
                   key={filter}
                   onClick={() => setActiveFilter(filter)}
@@ -157,6 +185,24 @@ const CityMap = () => {
                   <span className="text-xs bg-white border border-brand-200 rounded-full px-2 py-0.5 text-civic-muted">
                     {issues.filter(i => i.category === filter).length}
                   </span>
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="mb-6">
+            <h3 className="text-xs font-semibold text-civic-muted uppercase tracking-wider mb-3">Priority</h3>
+            <div className="flex flex-wrap gap-2">
+              {['All', 'Urgent', 'High', 'Moderate', 'Low'].map(filter => (
+                <button
+                  key={filter}
+                  onClick={() => setPriorityFilter(filter)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
+                    priorityFilter === filter ? "bg-civic-primary text-white" : "bg-brand-100 text-civic-text hover:bg-brand-200"
+                  )}
+                >
+                  {filter}
                 </button>
               ))}
             </div>
@@ -176,6 +222,19 @@ const CityMap = () => {
       <div className="flex-1 rounded-xl overflow-hidden shadow-sm border border-civic-border relative z-10">
         
         {/* Map Overlay Controls */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-sm px-4">
+          <form onSubmit={handleSearchLocation} className="flex bg-white rounded-lg shadow-md border border-civic-border overflow-hidden">
+            <input
+              type="text"
+              placeholder="Search map location..."
+              className="flex-1 p-3 text-sm focus:outline-none"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <Button type="submit" variant="ghost" className="rounded-none border-l border-brand-100">Search</Button>
+          </form>
+        </div>
+        
         <button 
           onClick={locateUser}
           disabled={isLocating}
@@ -284,6 +343,20 @@ const CityMap = () => {
                     </Badge>
                   </div>
                   <h4 className="font-bold text-sm text-civic-text mb-1">{issue.title}</h4>
+                  
+                  <div className="grid grid-cols-2 gap-2 mb-2 text-xs border-y border-brand-100 py-2 my-2">
+                    <div>
+                      <span className="block text-civic-muted font-bold uppercase tracking-wider text-[10px]">Priority</span>
+                      <span className={cn("font-semibold", issue.citizenUrgency === 'URGENT' ? "text-civic-danger" : "text-civic-text")}>
+                        {issue.citizenUrgency || 'MEDIUM'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-civic-muted font-bold uppercase tracking-wider text-[10px]">Department</span>
+                      <span className="font-semibold text-civic-primary line-clamp-1">{issue.assignedDepartmentId}</span>
+                    </div>
+                  </div>
+
                   <div className="text-xs text-civic-muted mb-3 flex items-start gap-1">
                     <MapPin size={12} className="mt-0.5 flex-shrink-0" />
                     <span className="line-clamp-2">{issue.location.address}</span>

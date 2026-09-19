@@ -15,6 +15,8 @@ export type IssueCategory = 'Pothole' | 'Garbage' | 'Streetlight' | 'Waterloggin
 
 export type Severity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
+export type Urgency = 'URGENT' | 'HIGH' | 'MODERATE' | 'LOW';
+
 export interface AIAnalysis {
   confidence: number;
   detectedCategory: IssueCategory;
@@ -26,6 +28,7 @@ export interface AIAnalysis {
   keywords?: string[];
   matchedSignals?: string[];
   possibleDuplicate?: boolean;
+  estimatedResolutionTime?: string;
 }
 
 export interface Issue {
@@ -45,6 +48,8 @@ export interface Issue {
   status: IssueStatus;
   priority: Severity;
   priorityScore: number;
+  citizenUrgency?: Urgency;
+  estimatedResolutionTime?: string;
   reporterId: string;
   createdAt: string;
   updatedAt: string;
