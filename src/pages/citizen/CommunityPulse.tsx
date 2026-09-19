@@ -10,6 +10,27 @@ import { cn } from '../../utils/cn';
 import { Link } from 'react-router-dom';
 import { Map, AdvancedMarker } from '@vis.gl/react-google-maps';
 
+const getCategoryIcon = (category: string) => {
+  switch (category) {
+    case 'Pothole':
+    case 'Road Damage': return '🛣️';
+    case 'Garbage': return '🗑️';
+    case 'Streetlight': return '💡';
+    case 'Water Leakage': return '💧';
+    case 'Waterlogging': return '🌧️';
+    case 'Drainage': return '🌊';
+    case 'Traffic': return '🚦';
+    default: return '🚧';
+  }
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'RESOLVED': case 'CITIZEN_VERIFIED': return '#10b981'; // Green
+    case 'IN_PROGRESS': return '#f59e0b'; // Amber
+    default: return '#ef4444'; // Red
+  }
+};
 
 const CommunityPulse = () => {
   const { issues, voteIssue, currentUser } = useStore();
@@ -128,7 +149,7 @@ const CommunityPulse = () => {
             const userVote = issue.userVotes?.[userId];
             
             // Generate a non-exact locality string
-            const localityMatch = issue.location.address.match(/Sector \\d+|Phase \\d+|[A-Z][a-z]+ Nagar|[A-Z][a-z]+ Colony|[A-Z][a-z]+ Enclave/i);
+            const localityMatch = issue.location.address.match(/Sector \d+|Phase \d+|[A-Z][a-z]+ Nagar|[A-Z][a-z]+ Colony|[A-Z][a-z]+ Enclave/i);
             const locality = localityMatch ? localityMatch[0] : issue.location.ward || 'Local Area';
 
             return (
@@ -176,7 +197,7 @@ const CommunityPulse = () => {
                         {supportPercent}% Support
                       </div>
                     )}
-                    <Link to={\`/issue/\${issue.id}\`}>
+                    <Link to={`/issue/${issue.id}`}>
                       <Button variant="outline" size="sm" className="text-xs h-8">View Details</Button>
                     </Link>
                   </div>
@@ -187,45 +208,43 @@ const CommunityPulse = () => {
         </div>
       ) : (
         <div className="h-[600px] bg-white rounded-xl shadow-sm border border-brand-200 overflow-hidden relative">
-           <MapContainer center={[30.7333, 76.7794]} zoom={12} style={{ height: '100%', width: '100%' }}>
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+          <Map 
+            defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
+            defaultZoom={12} 
+            mapId="civicpulse_community_pulse_map"
+            disableDefaultUI={true}
+          >
             {sortedIssues.map(issue => (
-              <Marker 
+              <AdvancedMarker 
                 key={issue.id} 
-                position={[issue.location.lat, issue.location.lng]}
-                icon={createCustomIcon(getStatusColor(issue.status))}
+                position={{ lat: issue.location.lat, lng: issue.location.lng }}
               >
-                <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-0">
-                  <div className="p-3 min-w-[220px]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">{getCategoryIcon(issue.category)}</span>
-                      <h4 className="font-bold text-sm text-civic-text">{issue.title}</h4>
-                    </div>
-                    <div className="flex justify-between items-center text-xs mb-3 border-y border-brand-100 py-2">
-                      <div>
-                        <span className="text-civic-muted font-semibold block">Score</span>
-                        <span className="font-bold text-civic-primary">{(issue.upvotes || 0) - (issue.downvotes || 0)}</span>
-                      </div>
-                      <div>
-                        <span className="text-civic-muted font-semibold block">Upvotes</span>
-                        <span className="font-bold text-brand-500">{issue.upvotes || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-civic-muted font-semibold block">Status</span>
-                        <span className={cn("font-bold", issue.status === 'RESOLVED' ? "text-green-500" : "text-amber-500")}>{issue.status.replace('_', ' ')}</span>
-                      </div>
-                    </div>
-                    <Link to={\`/issue/\${issue.id}\`} className="block w-full">
-                      <Button size="sm" className="w-full">View Community Discussion</Button>
-                    </Link>
+                <div className="p-3 min-w-[220px] bg-white rounded-xl shadow-lg border border-brand-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">{getCategoryIcon(issue.category)}</span>
+                    <h4 className="font-bold text-sm text-civic-text">{issue.title}</h4>
                   </div>
-                </Popup>
-              </Marker>
+                  <div className="flex justify-between items-center text-xs mb-3 border-y border-brand-100 py-2">
+                    <div>
+                      <span className="text-civic-muted font-semibold block">Score</span>
+                      <span className="font-bold text-civic-primary">{(issue.upvotes || 0) - (issue.downvotes || 0)}</span>
+                    </div>
+                    <div>
+                      <span className="text-civic-muted font-semibold block">Upvotes</span>
+                      <span className="font-bold text-brand-500">{issue.upvotes || 0}</span>
+                    </div>
+                    <div>
+                      <span className="text-civic-muted font-semibold block">Status</span>
+                      <span className={cn("font-bold", issue.status === 'RESOLVED' ? "text-green-500" : "text-amber-500")}>{issue.status.replace('_', ' ')}</span>
+                    </div>
+                  </div>
+                  <Link to={`/issue/${issue.id}`} className="block w-full">
+                    <Button size="sm" className="w-full">View Community Discussion</Button>
+                  </Link>
+                </div>
+              </AdvancedMarker>
             ))}
-          </MapContainer>
+          </Map>
         </div>
       )}
     </div>

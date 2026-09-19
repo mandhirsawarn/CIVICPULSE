@@ -8,11 +8,15 @@ import { Badge } from '../../components/ui/Badge';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card } from '../../components/ui/Card';
 import { cn } from '../../utils/cn';
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'RESOLVED': case 'CITIZEN_VERIFIED': return '#10b981'; // Green
+    case 'IN_PROGRESS': return '#f59e0b'; // Amber
+    default: return '#ef4444'; // Red
+  }
+};
 
 
-  }, [center, trigger, map]);
-  return null;
-}
 
 const AdminMap = () => {
   const { issues, fieldTeams, hotspots, departments } = useStore();
@@ -27,6 +31,14 @@ const AdminMap = () => {
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [flyTrigger, setFlyTrigger] = useState(0);
+  const map = useMap();
+  
+  React.useEffect(() => {
+    if (map && position && flyTrigger > 0) {
+      map.panTo(position);
+      map.setZoom(14);
+    }
+  }, [map, position, flyTrigger]);
 
   const locateUser = React.useCallback(() => {
     setIsLocating(true);
@@ -316,45 +328,72 @@ const AdminMap = () => {
           )}
           
           <div className="flex-1 relative w-full h-full">
-            <div className="flex-1 relative z-0 h-full">
-        <Map 
-          defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
-          center={position}
-          defaultZoom={13}
-          mapId="civicpulse_admin_map"
-          disableDefaultUI={true}
-        >
-          {filteredIssues.map((issue) => {
-            const isSelected = selectedIssueId === issue.id;
-            const size = isSelected ? 24 : 16;
-            return (
-              <AdvancedMarker 
-                key={issue.id} 
-                position={{ lat: issue.location.lat, lng: issue.location.lng }}
-                onClick={() => setSelectedIssueId(issue.id)}
-              >
-                <div style={{ backgroundColor: getStatusColor(issue.status), width: `${size}px`, height: `${size}px`, borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)', transition: 'all 0.2s' }}></div>
-              </AdvancedMarker>
-            );
-          })}
-
-          {filteredTeams.map(team => (
-            <AdvancedMarker 
-              key={team.id} 
-              position={{ lat: team.currentLocation.lat, lng: team.currentLocation.lng }}
+            <Map 
+              defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
+              center={position}
+              defaultZoom={13}
+              mapId="civicpulse_admin_map"
+              disableDefaultUI={true}
             >
-              <div style={{ backgroundColor: '#3b82f6', width: '14px', height: '14px', borderRadius: '50%', border: '2px solid white', boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ width: '4px', height: '4px', background: 'white', borderRadius: '50%' }}></div>
-              </div>
-            </AdvancedMarker>
-          ))}
+              {hotspots.map(hotspot => (
+                <AdvancedMarker 
+                  key={hotspot.id}
+                  position={{ lat: hotspot.location.lat, lng: hotspot.location.lng }}
+                >
+                  <div 
+                    style={{
+                      backgroundColor: hotspot.riskLevel === 'HIGH' ? '#ef4444' : '#f59e0b',
+                      width: `${Math.min(100, hotspot.location.radius / 10)}px`,
+                      height: `${Math.min(100, hotspot.location.radius / 10)}px`,
+                      borderRadius: '50%',
+                      opacity: 0.3,
+                      pointerEvents: 'none',
+                      transform: 'translate(-50%, -50%)',
+                      position: 'absolute'
+                    }}
+                  />
+                  <div className="relative">
+                    <div style={{ backgroundColor: hotspot.riskLevel === 'HIGH' ? '#ef4444' : '#f59e0b', width: '16px', height: '16px', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
+                  </div>
+                </AdvancedMarker>
+              ))}
 
-          {userLocation && (
-            <AdvancedMarker position={userLocation}>
-               <div style={{ backgroundColor: '#3b82f6', width: '16px', height: '16px', borderRadius: '50%', border: '3px solid white', boxShadow: '0 0 10px rgba(59, 130, 246, 0.8)' }}></div>
-            </AdvancedMarker>
-          )}
-        </Map>
+              {userLocation && (
+                <AdvancedMarker position={userLocation}>
+                   <div style={{ backgroundColor: '#3b82f6', width: '16px', height: '16px', borderRadius: '50%', border: '3px solid white', boxShadow: '0 0 10px rgba(59, 130, 246, 0.8)' }}></div>
+                </AdvancedMarker>
+              )}
+
+              {fieldTeams.map((team: any) => (
+                <AdvancedMarker 
+                  key={team.id} 
+                  position={{ lat: team.currentLocation.lat, lng: team.currentLocation.lng }}
+                >
+                  <div style={{ backgroundColor: '#3b82f6', width: '14px', height: '14px', borderRadius: '50%', border: '2px solid white', boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '4px', height: '4px', background: 'white', borderRadius: '50%' }}></div>
+                  </div>
+                </AdvancedMarker>
+              ))}
+
+              {/* Filtered Issues */}
+              {filteredIssues.map(issue => (
+                <AdvancedMarker 
+                  key={issue.id} 
+                  position={{ lat: issue.location.lat, lng: issue.location.lng }}
+                  onClick={() => setSelectedIssueId(issue.id)}
+                >
+                  <div style={{ 
+                    backgroundColor: getStatusColor(issue.status), 
+                    width: selectedIssueId === issue.id ? '24px' : '16px', 
+                    height: selectedIssueId === issue.id ? '24px' : '16px', 
+                    borderRadius: '50%', 
+                    border: '2px solid white', 
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                    transition: 'all 0.2s ease-in-out'
+                  }}></div>
+                </AdvancedMarker>
+              ))}
+            </Map>
             
             {/* Issue Detail Drawer Overlay */}
             {selectedIssue && (

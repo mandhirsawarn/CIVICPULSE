@@ -13,7 +13,6 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { compressImage } from '../../utils/imageCompression';
 import { saveMediaBlob, getMediaBlob, deleteMediaBlob } from '../../utils/indexedDB';
 
-
 const CATEGORIES = [
   { id: 'Pothole', icon: AlertTriangle, color: 'bg-civic-warning/10 text-civic-warning border-civic-warning/20' },
   { id: 'Garbage', icon: AlertTriangle, color: 'bg-civic-accent/10 text-civic-accent border-civic-accent/20' },
@@ -36,19 +35,362 @@ const STEPS = [
   { num: '08', title: 'Submit' }
 ];
 
-const MapPicker = ({ position, onLocationSelect, active }: { position: {lat: number, lng: number} | null, onLocationSelect: (lat: number, lng: number) => void, active: boolean }) => {
-  const map = useMap();
+
+
+const ReportIssue = () => {
+  const navigate = useNavigate();
+  const routerLocation = useLocation();
+  const { addIssue, currentUser, issues, reportDraft, updateReportDraft, setReportDraft, clearReportDraft } = useStore();
   
+  const [showDraftPrompt, setShowDraftPrompt] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  const [step, setStep] = useState(1);
+  const [category, setCategory] = useState<string>('');
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoId, setPhotoId] = useState<string | null>(null);
+  const [locationStr, setLocationStr] = useState('Fetching location...');
+  const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState(false);
+  const [locationSource, setLocationSource] = useState<'GPS' | 'Manual' | 'Search'>('GPS');
+  const [isDropPinMode, setIsDropPinMode] = useState(false);
+  const [description, setDescription] = useState('');
+  const [urgency, setUrgency] = useState<Urgency | ''>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
+  const [duplicateData, setDuplicateData] = useState<any>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [storageError, setStorageError] = useState(false);
+  
+  const [nearbyIssues, setNearbyIssues] = useState<any[]>([]);
+
+  const [showEmergencyWarning, setShowEmergencyWarning] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const [voiceRecordingId, setVoiceRecordingId] = useState<string | null>(null);
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
+  const [voiceTranscript, setVoiceTranscript] = useState<string>('');
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const recognitionRef = useRef<any>(null);
+  const timerRef = useRef<any>(null);
+
+  // Draft prompt logic
+  useEffect(() => {
+    if (reportDraft && !draftRestored) {
+      setShowDraftPrompt(true);
+    } else {
+      setDraftRestored(true);
+    }
+  }, []); // Only on mount
+
+  const restoreDraft = async () => {
+    if (!reportDraft) return;
+    
+    setCategory(reportDraft.category);
+    setDescription(reportDraft.description);
+    setLocationStr(reportDraft.locationStr);
+    setCoordinates(reportDraft.coordinates);
+    setLocationSource(reportDraft.locationSource);
+    setSearchQuery(reportDraft.searchQuery || '');
+    setUrgency(reportDraft.urgency as Urgency);
+    setContactPhone(reportDraft.contactPhone);
+    setContactEmail(reportDraft.contactEmail);
+    setStep(reportDraft.step);
+    
+    setPhotoId(reportDraft.photoId || null);
+    if (reportDraft.photoId) {
+      try {
+        const data = await getMediaBlob(reportDraft.photoId);
+        if (data) setPhoto(data as string);
+      } catch (e) { console.error("Error restoring photo", e); }
+    }
+
+    setVoiceRecordingId(reportDraft.voiceRecordingId || null);
+    if (reportDraft.voiceRecordingId) {
+      try {
+        const data = await getMediaBlob(reportDraft.voiceRecordingId);
+        if (data) {
+          const blob = data as Blob;
+          setVoiceBlob(blob);
+          setVoiceUrl(URL.createObjectURL(blob));
+          setVoiceTranscript(reportDraft.voiceTranscript || '');
+          setRecordingTime(reportDraft.voiceDuration || 0);
+        }
+      } catch (e) { console.error("Error restoring audio", e); }
+    }
+    
+    setShowDraftPrompt(false);
+    setDraftRestored(true);
+  };
+
+  const discardDraft = () => {
+    if (window.confirm("Start a new report? This will discard your current draft.")) {
+      clearReportDraft();
+      setShowDraftPrompt(false);
+      setDraftRestored(true);
+    }
+  };
+
+  // Auto-save logic
+  useEffect(() => {
+    if (draftRestored && step < 8) {
+      updateReportDraft({
+        category,
+        description,
+        locationStr,
+        coordinates,
+        locationSource,
+        searchQuery,
+        urgency,
+        contactPhone,
+        contactEmail,
+        step,
+        photoId: photoId || undefined,
+        voiceRecordingId: voiceRecordingId || undefined,
+        voiceTranscript,
+        voiceDuration: recordingTime
+      });
+    }
+  }, [category, description, locationStr, coordinates, locationSource, searchQuery, urgency, contactPhone, contactEmail, step, photoId, voiceRecordingId, voiceTranscript, recordingTime, draftRestored]);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        setIsCompressing(true);
+        const compressedBase64 = await compressImage(file);
+        setPhoto(compressedBase64);
+        
+        const newPhotoId = `photo-${Date.now()}`;
+        await saveMediaBlob(newPhotoId, compressedBase64);
+        setPhotoId(newPhotoId);
+      } catch (error) {
+        console.error("Failed to process image:", error);
+        alert("Failed to process image. Please try another one.");
+      } finally {
+        setIsCompressing(false);
+      }
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    setPhoto(null);
+    if (photoId) {
+      await deleteMediaBlob(photoId);
+      setPhotoId(null);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setVoiceBlob(audioBlob);
+        const url = URL.createObjectURL(audioBlob);
+        setVoiceUrl(url);
+        stream.getTracks().forEach(track => track.stop());
+        
+        const newAudioId = `audio-${Date.now()}`;
+        await saveMediaBlob(newAudioId, audioBlob);
+        setVoiceRecordingId(newAudioId);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => {
+          if (prev >= 59) {
+            stopRecording();
+            return 60;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN';
+        
+        recognition.onresult = (event: any) => {
+          let currentTranscript = '';
+          for (let i = 0; i < event.results.length; i++) {
+            currentTranscript += event.results[i][0].transcript;
+          }
+          setVoiceTranscript(currentTranscript);
+        };
+        
+        recognition.start();
+        recognitionRef.current = recognition;
+      }
+
+    } catch (err) {
+      console.error("Microphone access denied:", err);
+      alert("Microphone permission is required to record your issue.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      clearInterval(timerRef.current);
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    }
+  };
+
+  const deleteRecording = async () => {
+    setVoiceBlob(null);
+    if (voiceUrl) URL.revokeObjectURL(voiceUrl);
+    setVoiceUrl(null);
+    setVoiceTranscript('');
+    setRecordingTime(0);
+    if (voiceRecordingId) {
+      await deleteMediaBlob(voiceRecordingId);
+      setVoiceRecordingId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!draftRestored) return;
+    
+    const params = new URLSearchParams(routerLocation.search);
+    const paramLat = params.get('lat');
+    const paramLng = params.get('lng');
+    const paramAddr = params.get('address');
+    
+    if (paramLat && paramLng && step === 1) {
+      setCoordinates({ lat: parseFloat(paramLat), lng: parseFloat(paramLng) });
+      setLocationStr(paramAddr || 'Selected from Map');
+      setLocationSource('Search');
+      setStep(5); // Jump to location
+    } else if (step === 5 && !isLocating && !coordinates && !locationError && locationSource === 'GPS') {
+      fetchLiveLocation();
+    }
+  }, [step, routerLocation.search, draftRestored]);
+
+  // Check for nearby issues of same category
+  useEffect(() => {
+    if (category && coordinates) {
+      const getDistKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371; 
+        const dLat = (lat2 - lat1) * (Math.PI / 180);
+        const dLon = (lon2 - lon1) * (Math.PI / 180);
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))); 
+      };
+      
+      const nearby = issues.filter(issue => 
+        issue.category === category &&
+        getDistKm(coordinates.lat, coordinates.lng, issue.location.lat, issue.location.lng) < 2.0 // 2km radius
+      );
+      setNearbyIssues(nearby);
+    } else {
+      setNearbyIssues([]);
+    }
+  }, [category, coordinates, issues]);
+
+  const fetchLiveLocation = () => {
+    setIsLocating(true);
+    setLocationError(false);
+    setLocationStr('Getting live GPS location...');
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCoordinates({ lat: position.coords.latitude, lng: position.coords.longitude });
+          setLocationStr(`Lat: ${position.coords.latitude.toFixed(4)}, Lng: ${position.coords.longitude.toFixed(4)}`);
+          setLocationSource('GPS');
+          setIsLocating(false);
+          reverseGeocode(position.coords.latitude, position.coords.longitude);
+        },
+        (error) => {
+          setLocationStr('Location access is required or failed.');
+          setCoordinates(null);
+          setLocationError(true);
+          setIsLocating(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      setLocationStr('Geolocation not supported by this browser.');
+      setCoordinates(null);
+      setLocationError(true);
+      setIsLocating(false);
+    }
+  };
+
+
+  const geocodingLib = useMapsLibrary('geocoding');
+  const placesLib = useMapsLibrary('places');
+  const geocoder = React.useMemo(() => geocodingLib ? new geocodingLib.Geocoder() : null, [geocodingLib]);
+  const autocompleteService = React.useMemo(() => placesLib ? new placesLib.AutocompleteService() : null, [placesLib]);
+  
+  const reverseGeocode = async (lat: number, lng: number) => {
+    if (!geocoder) return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+    try {
+      const response = await geocoder.geocode({ location: { lat, lng } });
+      if (response.results[0]) {
+        return response.results[0].formatted_address;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+  };
+
+  const handleManualLocation = () => {
+    setIsDropPinMode(true);
+    if (!coordinates) {
+      setCoordinates({ lat: 30.7333, lng: 76.7794 }); // default Chandigarh
+    }
+    setLocationStr('Drop Pin Mode: Click anywhere on the map to select the issue location.');
+    setLocationSource('Manual');
+    setLocationError(false);
+  };
+
+  const handleMapClick = (lat: number, lng: number) => {
+    setCoordinates({ lat, lng });
+    setLocationSource('Manual');
+    setIsDropPinMode(false);
+    setLocationStr('Fetching address...');
+    reverseGeocode(lat, lng).then(addr => setLocationStr(addr));
+  };
+
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (searchQuery.trim().length >= 3 && autocompleteService) {
         setIsLocating(true);
         try {
           const res = await autocompleteService.getPlacePredictions({ input: searchQuery, componentRestrictions: { country: 'in' } });
-          const suggestions = res.predictions.map(p => ({
+          const suggestions = res.predictions.map((p: any) => ({
             place_id: p.place_id,
-            display_name: p.description,
-            is_google: true
+            display_name: p.description
           }));
           setSearchSuggestions(suggestions);
         } catch (e) {
@@ -70,45 +412,42 @@ const MapPicker = ({ position, onLocationSelect, active }: { position: {lat: num
     try {
       const res = await autocompleteService.getPlacePredictions({ input: searchQuery, componentRestrictions: { country: 'in' } });
       if (res.predictions && res.predictions.length > 0) {
-        const suggestions = res.predictions.map(p => ({
+        const suggestions = res.predictions.map((p: any) => ({
           place_id: p.place_id,
-          display_name: p.description,
-          is_google: true
+          display_name: p.description
         }));
         setSearchSuggestions(suggestions);
         if (suggestions.length === 1) {
           handleSelectSuggestion(suggestions[0]);
         }
       } else {
-        alert("No locations found. Try a nearby landmark, road, sector or full address.");
+        alert("Location not found.");
       }
     } catch (e) {
       console.error(e);
-      alert("Location search is temporarily unavailable. You can still use Current Location or Drop Pin.");
+      alert("Search failed.");
     } finally {
       setIsLocating(false);
     }
   };
 
   const handleSelectSuggestion = (suggestion: any) => {
-    if (suggestion.is_google && geocoder) {
-      geocoder.geocode({ placeId: suggestion.place_id }).then((response) => {
-        if (response.results[0]) {
-          const location = response.results[0].geometry.location;
-          setCoordinates({ lat: location.lat(), lng: location.lng() });
-          setLocationStr(suggestion.display_name);
-          setLocationSource('Search');
-          setLocationError(false);
-          setIsDropPinMode(false);
-          setSearchSuggestions([]);
-          setSearchQuery('');
-        }
-      });
-    } else {
-       // fallback if somehow needed
-       setSearchSuggestions([]);
-       setSearchQuery('');
-    }
+    if (!geocoder) return;
+    geocoder.geocode({ placeId: suggestion.place_id }).then((response: any) => {
+      if (response.results[0]) {
+        const location = response.results[0].geometry.location;
+        const newLat = location.lat();
+        const newLng = location.lng();
+        setCoordinates({ lat: newLat, lng: newLng });
+        setLocationSource('Search');
+        setSearchSuggestions([]);
+        const placeName = suggestion.display_name.split(',')[0];
+        setSearchQuery(placeName);
+        setLocationStr(suggestion.display_name);
+        setLocationError(false);
+        setIsDropPinMode(false);
+      }
+    });
   };
 
   const getAIAnalysis = async () => {
@@ -579,20 +918,29 @@ const MapPicker = ({ position, onLocationSelect, active }: { position: {lat: num
                 <div className="w-full h-[250px] bg-brand-100 rounded-xl overflow-hidden relative border border-brand-200 mb-4 z-0">
                   <Map 
                     defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
-                    defaultZoom={12} 
+                    center={coordinates || { lat: 30.7333, lng: 76.7794 }}
+                    defaultZoom={13}
                     mapId="civicpulse_report_map"
+                    disableDefaultUI={true}
                     onClick={(e) => {
-                      if (isDropPinMode && e.detail.latLng) {
+                      if ((isDropPinMode || locationSource === 'Manual') && e.detail.latLng) {
                         handleMapClick(e.detail.latLng.lat, e.detail.latLng.lng);
                       }
                     }}
-                    disableDefaultUI={true}
                   >
-                    <MapPicker position={coordinates} onLocationSelect={(lat, lng) => {
-                      setCoordinates({ lat, lng });
-                      setLocationSource('Manual');
-                      reverseGeocode(lat, lng);
-                    }} active={true} />
+                    {coordinates && (
+                      <AdvancedMarker 
+                        position={coordinates}
+                        draggable={true}
+                        onDragEnd={(e) => {
+                          if (e.latLng) {
+                            handleMapClick(e.latLng.lat(), e.latLng.lng());
+                          }
+                        }}
+                      >
+                         <div style={{ backgroundColor: '#3b82f6', width: '20px', height: '20px', borderRadius: '50%', border: '3px solid white', boxShadow: '0 0 4px rgba(0,0,0,0.4)' }}></div>
+                      </AdvancedMarker>
+                    )}
                   </Map>
                   
                   {isLocating && !searchQuery && (

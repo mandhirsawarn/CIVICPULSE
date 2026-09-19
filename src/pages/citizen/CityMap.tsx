@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
+import { Map, AdvancedMarker, useMapsLibrary, useMap } from '@vis.gl/react-google-maps';
 import { useStore } from '../../store/useStore';
 import { ShieldAlert, Filter, ListFilter, MapPin, LocateFixed, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { cn } from '../../utils/cn';
-
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -16,18 +15,7 @@ const getStatusColor = (status: string) => {
   }
 };
 
-const createUserIcon = () => {
-  return new L.DivIcon({
-    className: 'custom-div-icon',
-    html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);"></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
-  });
-};
 
-  }, [center, trigger, map]);
-  return null;
-}
 
 const CityMap = () => {
   const { issues, hotspots } = useStore();
@@ -44,6 +32,19 @@ const CityMap = () => {
   const [isLocating, setIsLocating] = useState(false);
   const [flyTrigger, setFlyTrigger] = useState(0);
   const [showAllReports, setShowAllReports] = useState(false);
+
+  const geocodingLib = useMapsLibrary('geocoding');
+  const placesLib = useMapsLibrary('places');
+  const geocoder = React.useMemo(() => geocodingLib ? new geocodingLib.Geocoder() : null, [geocodingLib]);
+  const autocompleteService = React.useMemo(() => placesLib ? new placesLib.AutocompleteService() : null, [placesLib]);
+  const map = useMap();
+  
+  React.useEffect(() => {
+    if (map && position && flyTrigger > 0) {
+      map.panTo(position);
+      map.setZoom(14);
+    }
+  }, [map, position, flyTrigger]);
 
   const locateUser = React.useCallback(() => {
     setIsLocating(true);
@@ -69,28 +70,16 @@ const CityMap = () => {
   }, []);
 
   const reverseGeocode = async (lat: number, lng: number) => {
+    if (!geocoder) return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-      const data = await res.json();
-      if (data && data.display_name) {
-        return data.display_name;
+      const response = await geocoder.geocode({ location: { lat, lng } });
+      if (response.results[0]) {
+        return response.results[0].formatted_address;
       }
     } catch (e) {
       console.error(e);
     }
     return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
-  };
-
-  const MapEvents = () => {
-    useMapEvents({
-      click: async (e: any) => {
-        const { lat, lng } = e.latlng;
-        setSearchPin({ lat, lng, label: 'Fetching address...', isManual: true });
-        const address = await reverseGeocode(lat, lng);
-        setSearchPin({ lat, lng, label: address, isManual: true });
-      }
-    });
-    return null;
   };
 
   React.useEffect(() => {
@@ -99,12 +88,15 @@ const CityMap = () => {
 
   React.useEffect(() => {
     const timer = setTimeout(async () => {
-      if (searchQuery.trim().length >= 3) {
+      if (searchQuery.trim().length >= 3 && autocompleteService) {
         setIsSearching(true);
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
-          const data = await res.json();
-          setSearchSuggestions(data || []);
+          const res = await autocompleteService.getPlacePredictions({ input: searchQuery, componentRestrictions: { country: 'in' } });
+          const suggestions = res.predictions.map((p: any) => ({
+            place_id: p.place_id,
+            display_name: p.description
+          }));
+          setSearchSuggestions(suggestions);
         } catch (e) {
           console.error(e);
         } finally {
@@ -115,19 +107,22 @@ const CityMap = () => {
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, autocompleteService]);
 
   const handleSearchLocation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim() || !autocompleteService) return;
     setIsSearching(true);
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
-      const data = await res.json();
-      if (data && data.length > 0) {
-        setSearchSuggestions(data);
-        if (data.length === 1) {
-          handleSelectSuggestion(data[0]);
+      const res = await autocompleteService.getPlacePredictions({ input: searchQuery, componentRestrictions: { country: 'in' } });
+      if (res.predictions && res.predictions.length > 0) {
+        const suggestions = res.predictions.map((p: any) => ({
+          place_id: p.place_id,
+          display_name: p.description
+        }));
+        setSearchSuggestions(suggestions);
+        if (suggestions.length === 1) {
+          handleSelectSuggestion(suggestions[0]);
         }
       } else {
         alert("Location not found.");
@@ -141,14 +136,20 @@ const CityMap = () => {
   };
 
   const handleSelectSuggestion = (suggestion: any) => {
-    const newLat = parseFloat(suggestion.lat);
-    const newLng = parseFloat(suggestion.lon);
-    setPosition([newLat, newLng]);
-    setFlyTrigger(prev => prev + 1);
-    setSearchSuggestions([]);
-    const placeName = suggestion.display_name.split(',')[0];
-    setSearchQuery(placeName); // Update with just the place name
-    setSearchPin({ lat: newLat, lng: newLng, label: placeName });
+    if (!geocoder) return;
+    geocoder.geocode({ placeId: suggestion.place_id }).then((response: any) => {
+      if (response.results[0]) {
+        const location = response.results[0].geometry.location;
+        const newLat = location.lat();
+        const newLng = location.lng();
+        setPosition({lat: newLat, lng: newLng});
+        setFlyTrigger(prev => prev + 1);
+        setSearchSuggestions([]);
+        const placeName = suggestion.display_name.split(',')[0];
+        setSearchQuery(placeName);
+        setSearchPin({ lat: newLat, lng: newLng, label: placeName });
+      }
+    });
   };
 
   const filteredIssues = issues.filter(issue => {
@@ -168,7 +169,7 @@ const CityMap = () => {
     // Distance filtering
     if (userLocation && !showAllReports) {
       // Calculate basic distance in degrees (approx) - roughly 50km radius
-      const dist = Math.sqrt(Math.pow(issue.location.lat - userLocation[0], 2) + Math.pow(issue.location.lng - userLocation[1], 2));
+      const dist = Math.sqrt(Math.pow(issue.location.lat - userLocation.lat, 2) + Math.pow(issue.location.lng - userLocation.lng, 2));
       if (dist > 0.5) return false;
     }
     
@@ -344,39 +345,77 @@ const CityMap = () => {
           </div>
         </div>
 
-        <div className="flex-1 relative z-0 h-full">
         <Map 
           defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
           center={position}
           defaultZoom={13}
           mapId="civicpulse_city_map"
           disableDefaultUI={true}
+          onClick={async (e) => {
+            if (e.detail.latLng) {
+              const lat = e.detail.latLng.lat;
+              const lng = e.detail.latLng.lng;
+              setSearchPin({ lat, lng, label: 'Fetching address...', isManual: true });
+              const address = await reverseGeocode(lat, lng);
+              setSearchPin({ lat, lng, label: address, isManual: true });
+            }
+          }}
         >
-          {filteredIssues.map((issue) => (
+          {hotspots.map(hotspot => (
             <AdvancedMarker 
-              key={issue.id} 
-              position={{ lat: issue.location.lat, lng: issue.location.lng }}
+              key={hotspot.id}
+              position={{ lat: hotspot.location.lat, lng: hotspot.location.lng }}
             >
               <div 
-                className="group relative cursor-pointer"
-                title={issue.title}
-              >
-                <div style={{ backgroundColor: getStatusColor(issue.status), width: '16px', height: '16px', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }}></div>
-              </div>
+                style={{
+                  backgroundColor: hotspot.riskLevel === 'CRITICAL' ? '#ef4444' : '#f59e0b',
+                  width: `${Math.min(100, hotspot.location.radius / 10)}px`,
+                  height: `${Math.min(100, hotspot.location.radius / 10)}px`,
+                  borderRadius: '50%',
+                  opacity: 0.3,
+                  pointerEvents: 'none',
+                  transform: 'translate(-50%, -50%)',
+                  position: 'absolute'
+                }}
+              />
+              <div style={{ backgroundColor: hotspot.riskLevel === 'CRITICAL' ? '#ef4444' : '#f59e0b', width: '16px', height: '16px', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
             </AdvancedMarker>
           ))}
 
+          {/* User Location Pin */}
           {userLocation && (
             <AdvancedMarker position={userLocation}>
                <div style={{ backgroundColor: '#3b82f6', width: '16px', height: '16px', borderRadius: '50%', border: '3px solid white', boxShadow: '0 0 10px rgba(59, 130, 246, 0.8)' }}></div>
             </AdvancedMarker>
           )}
 
+          {/* Searched Location Pin */}
           {searchPin && (
             <AdvancedMarker position={{lat: searchPin.lat, lng: searchPin.lng}}>
+               <div className="bg-white rounded-xl shadow-lg border border-brand-200 p-3 min-w-[200px] mb-2 transform -translate-y-full absolute left-1/2 -translate-x-1/2 bottom-full whitespace-nowrap">
+                  <div className="font-bold text-civic-text text-sm mb-1">Location Details</div>
+                  <div className="text-xs text-civic-muted mb-2 font-medium leading-tight whitespace-normal">{searchPin.label}</div>
+                  <div className="text-[10px] text-brand-400 font-mono mb-3">
+                    Lat: {searchPin.lat.toFixed(6)} | Lng: {searchPin.lng.toFixed(6)}
+                  </div>
+                  <Link to={`/report?lat=${searchPin.lat}&lng=${searchPin.lng}&address=${encodeURIComponent(searchPin.label)}`} className="block w-full">
+                    <Button size="sm" className="w-full">Report Issue Here</Button>
+                  </Link>
+               </div>
                <div style={{ backgroundColor: '#eab308', width: '20px', height: '20px', borderRadius: '50%', border: '3px solid white', boxShadow: '0 0 10px rgba(234, 179, 8, 0.8)' }}></div>
             </AdvancedMarker>
           )}
+
+          {filteredIssues.map(issue => (
+            <AdvancedMarker 
+              key={issue.id} 
+              position={{ lat: issue.location.lat, lng: issue.location.lng }}
+            >
+              <Link to={`/issue/${issue.id}`} className="block">
+                <div style={{ backgroundColor: getStatusColor(issue.status), width: '16px', height: '16px', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
+              </Link>
+            </AdvancedMarker>
+          ))}
         </Map>
       </div>
     </div>

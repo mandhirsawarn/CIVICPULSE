@@ -24,6 +24,9 @@ interface StoreState {
   setReportDraft: (draft: ReportDraft | null) => void;
   updateReportDraft: (updates: Partial<ReportDraft>) => void;
   clearReportDraft: () => void;
+  voteIssue: (issueId: string, voteType: 'up' | 'down' | null) => void;
+  addCommunityComment: (issueId: string, text: string) => void;
+  requestCommunityRecheck: (issueId: string) => void;
 }
 
 // Simple Haversine for store
@@ -65,6 +68,56 @@ export const useStore = create<StoreState>()(
             } as ReportDraft
       })),
       clearReportDraft: () => set({ reportDraft: null }),
+      voteIssue: (issueId, voteType) => set((state) => {
+        const userId = state.currentUser?.id || 'demo-user-1';
+        return {
+          issues: state.issues.map(issue => {
+            if (issue.id === issueId) {
+              const currentVote = issue.userVotes?.[userId];
+              let newUpvotes = issue.upvotes || 0;
+              let newDownvotes = issue.downvotes || 0;
+              
+              if (currentVote === 'up') newUpvotes = Math.max(0, newUpvotes - 1);
+              if (currentVote === 'down') newDownvotes = Math.max(0, newDownvotes - 1);
+              
+              if (voteType === 'up') newUpvotes += 1;
+              if (voteType === 'down') newDownvotes += 1;
+              
+              const newUserVotes = { ...(issue.userVotes || {}) };
+              if (voteType) {
+                newUserVotes[userId] = voteType;
+              } else {
+                delete newUserVotes[userId];
+              }
+              
+              return { ...issue, upvotes: newUpvotes, downvotes: newDownvotes, userVotes: newUserVotes };
+            }
+            return issue;
+          })
+        };
+      }),
+
+      addCommunityComment: (issueId, text) => set((state) => {
+        const userId = state.currentUser?.name || 'Concerned Citizen';
+        return {
+          issues: state.issues.map(issue => {
+            if (issue.id === issueId) {
+              const newComment = { id: `c-${Date.now()}`, text, timestamp: new Date().toISOString(), author: userId };
+              return { ...issue, communityComments: [...(issue.communityComments || []), newComment] };
+            }
+            return issue;
+          })
+        };
+      }),
+
+      requestCommunityRecheck: (issueId) => set((state) => ({
+        issues: state.issues.map(issue => {
+          if (issue.id === issueId) {
+            return { ...issue, communityRecheckRequests: (issue.communityRecheckRequests || 0) + 1 };
+          }
+          return issue;
+        })
+      })),
       
       addIssue: (issue) => {
         set((state) => ({ issues: [issue, ...state.issues] }));

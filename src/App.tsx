@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import { APIProvider } from '@vis.gl/react-google-maps';
 
 import CitizenLayout from './layouts/CitizenLayout';
 import AdminLayout from './layouts/AdminLayout';
@@ -16,7 +15,6 @@ import Profile from './pages/citizen/Profile';
 import MyReports from './pages/citizen/MyReports';
 import CollaborationHub from './pages/citizen/CollaborationHub';
 import CommunityPulse from './pages/citizen/CommunityPulse';
-import Leaderboard from './pages/citizen/Leaderboard';
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminOverview from './pages/admin/Overview';
@@ -45,7 +43,7 @@ function AnimatedRoutes() {
           <Route path="my-reports" element={<Wrapped><MyReports /></Wrapped>} />
           <Route path="collaboration" element={<Wrapped><CollaborationHub /></Wrapped>} />
           <Route path="community-pulse" element={<Wrapped><CommunityPulse /></Wrapped>} />
-          <Route path="leaderboard" element={<Wrapped><Leaderboard /></Wrapped>} />
+
         </Route>
 
         {/* Admin authentication gate */}
@@ -75,18 +73,10 @@ function AnimatedRoutes() {
 }
 
 function App() {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-  
-  if (!apiKey) {
-    console.warn("Google Maps API key is not configured. Add VITE_GOOGLE_MAPS_API_KEY to your environment variables.");
-  }
-
   return (
-    <APIProvider apiKey={apiKey} onLoad={() => console.log('Maps API has loaded.')}>
-      <BrowserRouter>
-        <AnimatedRoutes />
-      </BrowserRouter>
-    </APIProvider>
+    <BrowserRouter>
+      <AnimatedRoutes />
+    </BrowserRouter>
   );
 }
 
