@@ -61,6 +61,7 @@ const CityMap = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchPin, setSearchPin] = useState<{lat: number, lng: number, label: string} | null>(null);
   
   // Default center (India center)
   const [position, setPosition] = useState<[number, number]>([20.5937, 78.9629]); 
@@ -145,7 +146,9 @@ const CityMap = () => {
     setPosition([newLat, newLng]);
     setFlyTrigger(prev => prev + 1);
     setSearchSuggestions([]);
-    setSearchQuery(suggestion.display_name.split(',')[0]); // Update with just the place name
+    const placeName = suggestion.display_name.split(',')[0];
+    setSearchQuery(placeName); // Update with just the place name
+    setSearchPin({ lat: newLat, lng: newLng, label: placeName });
   };
 
   const filteredIssues = issues.filter(issue => {
@@ -382,6 +385,16 @@ const CityMap = () => {
             <Marker position={userLocation} icon={createUserIcon()}>
               <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-3">
                 <span className="font-bold text-civic-text text-sm">You are here</span>
+              </Popup>
+            </Marker>
+          )}
+
+          {/* Searched Location Pin */}
+          {searchPin && (
+            <Marker position={[searchPin.lat, searchPin.lng]} icon={createCustomIcon('#3b82f6')}>
+              <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-3 min-w-[150px]">
+                <div className="font-bold text-civic-text text-sm mb-1">{searchPin.label}</div>
+                <div className="text-xs text-civic-muted">Searched Location</div>
               </Popup>
             </Marker>
           )}
