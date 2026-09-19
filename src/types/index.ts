@@ -67,6 +67,12 @@ export interface Issue {
   contactPhone?: string;
   contactEmail?: string;
   timeline: TimelineEvent[];
+  // Community Pulse fields
+  upvotes?: number;
+  downvotes?: number;
+  userVotes?: Record<string, 'up' | 'down'>;
+  communityComments?: { id: string; text: string; timestamp: string; author: string }[];
+  communityRecheckRequests?: number;
 }
 
 export interface TimelineEvent {

@@ -205,6 +205,50 @@ const Home = () => {
         </div>
       </motion.section>
 
+      {/* SECTION 3: Community Pulse */}
+      <motion.section variants={itemVariants}>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-xl font-bold text-civic-text flex items-center gap-2"><Users size={24} className="text-civic-primary" /> COMMUNITY PULSE</h2>
+            <p className="text-sm text-civic-muted mt-1">Top issues in your area</p>
+          </div>
+          <Link to="/community-pulse" className="text-sm font-medium text-civic-secondary hover:text-civic-secondary/80 flex items-center gap-1">
+            View Community Pulse <ChevronRight size={16} />
+          </Link>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {issues
+            .sort((a, b) => ((b.upvotes || 0) - (b.downvotes || 0)) - ((a.upvotes || 0) - (a.downvotes || 0)))
+            .slice(0, 3)
+            .map((issue, idx) => {
+              const score = (issue.upvotes || 0) - (issue.downvotes || 0);
+              const supportText = score >= 25 ? "High community support" : score >= 10 ? "Moderate community support" : "Community attention";
+              return (
+                <Card key={issue.id} className="flex flex-col hover:border-civic-primary/30 transition-colors">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-xl">
+                      {issue.category === 'Pothole' ? '🛣️' : issue.category === 'Garbage' ? '🗑️' : '🚧'}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-civic-muted uppercase">#{idx + 1}</div>
+                      <h3 className="font-bold text-civic-text line-clamp-1">{issue.category}</h3>
+                    </div>
+                  </div>
+                  <div className="mt-auto pt-3 border-t border-brand-100 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-civic-primary text-sm">
+                      ▲ {issue.upvotes || 0} votes
+                    </div>
+                    <div className="text-xs font-medium text-brand-500 bg-brand-50 px-2 py-1 rounded-md">
+                      {supportText}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+        </div>
+      </motion.section>
+
       {/* SECTION 4: How CivicPulse works */}
       <motion.section variants={itemVariants} className="bg-white rounded-2xl border border-civic-border p-8 md:p-12 shadow-sm">
         <h2 className="text-2xl font-bold text-center text-civic-text mb-10">How CivicPulse works</h2>

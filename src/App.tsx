@@ -14,6 +14,8 @@ import IssueDetails from './pages/citizen/IssueDetails';
 import Profile from './pages/citizen/Profile';
 import MyReports from './pages/citizen/MyReports';
 import CollaborationHub from './pages/citizen/CollaborationHub';
+import CommunityPulse from './pages/citizen/CommunityPulse';
+import Leaderboard from './pages/citizen/Leaderboard';
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminOverview from './pages/admin/Overview';
@@ -41,6 +43,8 @@ function AnimatedRoutes() {
           <Route path="profile" element={<Wrapped><Profile /></Wrapped>} />
           <Route path="my-reports" element={<Wrapped><MyReports /></Wrapped>} />
           <Route path="collaboration" element={<Wrapped><CollaborationHub /></Wrapped>} />
+          <Route path="community-pulse" element={<Wrapped><CommunityPulse /></Wrapped>} />
+          <Route path="leaderboard" element={<Wrapped><Leaderboard /></Wrapped>} />
         </Route>
 
         {/* Admin authentication gate */}

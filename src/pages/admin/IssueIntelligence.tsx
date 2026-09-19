@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { ShieldAlert, AlertTriangle, Activity, MapPin, Users, CheckCircle2, ChevronRight, X, Clock, BrainCircuit, ArrowRight } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, Activity, MapPin, Users, CheckCircle2, ChevronRight, X, Clock, BrainCircuit, ArrowRight, Flame } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Issue, FieldTeam } from '../../types';
 import { Card } from '../../components/ui/Card';
@@ -49,6 +49,7 @@ const IssueIntelligence = () => {
                 <th className="px-6 py-4 font-semibold">Issue ID</th>
                 <th className="px-6 py-4 font-semibold">Category</th>
                 <th className="px-6 py-4 font-semibold">AI Priority</th>
+                <th className="px-6 py-4 font-semibold">Community Score</th>
                 <th className="px-6 py-4 font-semibold">Location</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
                 <th className="px-6 py-4 font-semibold text-right">Actions</th>
@@ -90,6 +91,14 @@ const IssueIntelligence = () => {
                     ) : (
                       <span className="text-civic-muted text-xs italic">Awaiting AI</span>
                     )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center font-bold text-civic-primary text-xs">
+                        {(issue.upvotes || 0) - (issue.downvotes || 0)}
+                      </div>
+                      {((issue.upvotes || 0) - (issue.downvotes || 0)) >= 10 && <Flame size={14} className="text-brand-500" />}
+                    </div>
                   </td>
                   <td className="px-6 py-4 truncate max-w-[200px] text-civic-muted">
                     {issue.location.ward}

@@ -67,7 +67,7 @@ export const mockIssues: Issue[] = [
       priorityScore: 87,
       priorityReasoning: [{ factor: 'High traffic impact', score: 15 }, { factor: 'Vehicle damage risk', score: 10 }, { factor: 'Citizen flagged as URGENT', score: 20 }]
     },
-    timeline: [
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [
       { id: 'tl-1', status: 'REPORTED', timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), description: 'Issue reported', actor: 'Citizen' },
       { id: 'tl-1a', status: 'AI_VERIFIED', timestamp: new Date(Date.now() - 11.5 * 60 * 60 * 1000).toISOString(), description: 'AI Analysis completed', actor: 'System' },
       { id: 'tl-1b', status: 'ASSIGNED', timestamp: new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(), description: 'Routed to Road Maintenance', actor: 'System' },
@@ -94,7 +94,7 @@ export const mockIssues: Issue[] = [
     updatedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
     slaTarget: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
     aiAnalysis: { confidence: 92, detectedCategory: 'Waterlogging', severity: 'CRITICAL', safetyRisk: 'HIGH', suggestedDepartment: 'Water & Sewerage', priorityScore: 95, priorityReasoning: [{ factor: 'Property damage risk', score: 15 }, { factor: 'Health hazard', score: 10 }] },
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1039',
@@ -115,7 +115,7 @@ export const mockIssues: Issue[] = [
     updatedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
     slaTarget: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     aiAnalysis: { confidence: 88, detectedCategory: 'Streetlight', severity: 'LOW', safetyRisk: 'LOW', suggestedDepartment: 'Electrical Department', priorityScore: 35, priorityReasoning: [{ factor: 'Routine maintenance', score: 20 }] },
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1062',
@@ -135,7 +135,7 @@ export const mockIssues: Issue[] = [
     updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     slaTarget: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
     aiAnalysis: { confidence: 90, detectedCategory: 'Garbage', severity: 'MEDIUM', safetyRisk: 'LOW', suggestedDepartment: 'Sanitation Department', priorityScore: 55, priorityReasoning: [{ factor: 'Public nuisance', score: 30 }] },
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1060',
@@ -151,7 +151,7 @@ export const mockIssues: Issue[] = [
     slaTarget: new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString(), // AT_RISK
     createdAt: new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1061',
@@ -166,7 +166,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-6',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1020',
@@ -181,7 +181,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-7',
     createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1021',
@@ -196,7 +196,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-8',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1022',
@@ -211,7 +211,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-9',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1023',
@@ -226,7 +226,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-10',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1024',
@@ -241,7 +241,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-11',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1025',
@@ -256,7 +256,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-12',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1026',
@@ -271,7 +271,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-13',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1027',
@@ -286,7 +286,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-14',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1028',
@@ -301,7 +301,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-15',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1029',
@@ -316,7 +316,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-16',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1030',
@@ -331,7 +331,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-17',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1031',
@@ -346,7 +346,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-18',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1032',
@@ -361,7 +361,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-19',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1033',
@@ -376,7 +376,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-20',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1034',
@@ -391,7 +391,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-21',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1035',
@@ -406,7 +406,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-22',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   },
   {
     id: 'CP-1036',
@@ -421,7 +421,7 @@ export const mockIssues: Issue[] = [
     reporterId: 'user-23',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
+    upvotes: Math.floor(Math.random() * 50) + 1, downvotes: Math.floor(Math.random() * 5), userVotes: {}, communityComments: [], communityRecheckRequests: 0, timeline: [{ id: 't1', status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Reported', actor: 'Citizen' }]
   }
 ];
 

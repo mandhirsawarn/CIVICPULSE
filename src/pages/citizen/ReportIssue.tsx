@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall, Edit2, FileText } from 'lucide-react';
+import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall, Edit2, FileText, Users } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useStore } from '../../store/useStore';
@@ -110,6 +110,8 @@ const ReportIssue = () => {
   const [duplicateData, setDuplicateData] = useState<any>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [storageError, setStorageError] = useState(false);
+  
+  const [nearbyIssues, setNearbyIssues] = useState<any[]>([]);
 
   const [showEmergencyWarning, setShowEmergencyWarning] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -335,6 +337,27 @@ const ReportIssue = () => {
       fetchLiveLocation();
     }
   }, [step, routerLocation.search, draftRestored]);
+
+  // Check for nearby issues of same category
+  useEffect(() => {
+    if (category && coordinates) {
+      const getDistKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371; 
+        const dLat = (lat2 - lat1) * (Math.PI / 180);
+        const dLon = (lon2 - lon1) * (Math.PI / 180);
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))); 
+      };
+      
+      const nearby = issues.filter(issue => 
+        issue.category === category &&
+        getDistKm(coordinates.lat, coordinates.lng, issue.location.lat, issue.location.lng) < 2.0 // 2km radius
+      );
+      setNearbyIssues(nearby);
+    } else {
+      setNearbyIssues([]);
+    }
+  }, [category, coordinates, issues]);
 
   const fetchLiveLocation = () => {
     setIsLocating(true);
@@ -593,6 +616,23 @@ const ReportIssue = () => {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {nearbyIssues.length > 0 && step >= 5 && step < 8 && (
+        <div className="mb-4 bg-brand-50 border border-brand-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Users size={24} className="text-civic-primary mt-1 flex-shrink-0" />
+            <div>
+              <h4 className="font-bold text-civic-text text-sm">People in your area are also reporting this issue.</h4>
+              <p className="text-xs text-civic-muted mt-1">
+                {nearbyIssues.length} nearby reports • {nearbyIssues.reduce((acc, iss) => acc + (iss.upvotes || 0), 0)} community upvotes
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => navigate('/community-pulse')}>
+            View Community Reports
+          </Button>
         </div>
       )}
 

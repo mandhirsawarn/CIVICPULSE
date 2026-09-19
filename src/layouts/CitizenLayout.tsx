@@ -17,15 +17,16 @@ const CitizenLayout = () => {
   const desktopNav = [
     { name: 'Home', path: '/' },
     { name: 'Explore Map', path: '/map' },
+    { name: 'Community Pulse', path: '/community-pulse' },
     { name: 'My Reports', path: '/my-reports' },
-    { name: 'Community', path: '/collaboration' },
+    { name: 'Collaboration', path: '/collaboration' },
   ];
 
   const mobileNav = [
     { name: 'Home', path: '/', icon: Home },
     { name: 'Map', path: '/map', icon: MapIcon },
     { name: 'Report', path: '/report', icon: PlusCircle, highlight: true },
-    { name: 'Reports', path: '/my-reports', icon: FileText },
+    { name: 'Pulse', path: '/community-pulse', icon: Users },
     { name: 'Profile', path: '/profile', icon: User },
   ];
 
