@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
+import { APIProvider } from '@vis.gl/react-google-maps';
 
 import CitizenLayout from './layouts/CitizenLayout';
 import AdminLayout from './layouts/AdminLayout';
@@ -74,10 +75,18 @@ function AnimatedRoutes() {
 }
 
 function App() {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  
+  if (!apiKey) {
+    console.warn("Google Maps API key is not configured. Add VITE_GOOGLE_MAPS_API_KEY to your environment variables.");
+  }
+
   return (
-    <BrowserRouter>
-      <AnimatedRoutes />
-    </BrowserRouter>
+    <APIProvider apiKey={apiKey} onLoad={() => console.log('Maps API has loaded.')}>
+      <BrowserRouter>
+        <AnimatedRoutes />
+      </BrowserRouter>
+    </APIProvider>
   );
 }
 

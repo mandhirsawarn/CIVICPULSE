@@ -1,7 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 import { useStore } from '../../store/useStore';
 import { ShieldAlert, Filter, ListFilter, MapPin, Truck, AlertTriangle, LocateFixed, Loader2, Activity, Zap, Target, CheckCircle, Search, X, ChevronRight, Calendar, User as UserIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -11,56 +9,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Card } from '../../components/ui/Card';
 import { cn } from '../../utils/cn';
 
-// Fix Leaflet default icon issue
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
 
-// Custom Icon for Issues
-const createCustomIcon = (color: string, size = 16) => {
-  return new L.DivIcon({
-    className: 'custom-div-icon',
-    html: `<div style="background-color: ${color}; width: ${size}px; height: ${size}px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-    iconSize: [size, size],
-    iconAnchor: [size/2, size/2]
-  });
-};
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'RESOLVED': case 'CITIZEN_VERIFIED': return '#10b981'; // Green
-    case 'IN_PROGRESS': return '#f59e0b'; // Amber
-    default: return '#ef4444'; // Red
-  }
-};
-
-const createUserIcon = () => {
-  return new L.DivIcon({
-    className: 'custom-div-icon',
-    html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);"></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
-  });
-};
-
-const createTeamIcon = () => {
-  return new L.DivIcon({
-    className: 'custom-div-icon',
-    html: `<div style="background-color: #3b82f6; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 8px rgba(59, 130, 246, 0.8); display: flex; align-items: center; justify-content: center;"><div style="width: 4px; height: 4px; background: white; border-radius: 50%;"></div></div>`,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7]
-  });
-};
-
-function MapController({ center, trigger }: { center: [number, number] | null, trigger: number }) {
-  const map = useMap();
-  React.useEffect(() => {
-    if (center && trigger > 0) {
-      map.flyTo(center, 14, { duration: 1.5 });
-    }
   }, [center, trigger, map]);
   return null;
 }
@@ -74,8 +23,8 @@ const AdminMap = () => {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   
   // Default center
-  const [position, setPosition] = useState<[number, number]>([20.5937, 78.9629]);
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [position, setPosition] = useState<{lat: number, lng: number}>({lat: 20.5937, lng: 78.9629});
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [flyTrigger, setFlyTrigger] = useState(0);
 
@@ -85,7 +34,7 @@ const AdminMap = () => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+          const loc = {lat: pos.coords.latitude, lng: pos.coords.longitude};
           setPosition(loc);
           setUserLocation(loc);
           setFlyTrigger(prev => prev + 1);
@@ -367,100 +316,45 @@ const AdminMap = () => {
           )}
           
           <div className="flex-1 relative w-full h-full">
-            <MapContainer center={position} zoom={13} style={{ height: '100%', width: '100%' }}>
-              <MapController center={userLocation || position} trigger={flyTrigger} />
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              
-              {/* Dynamic Hotspots */}
-              {hotspots.map(hotspot => (
-                <Circle 
-                  key={hotspot.id}
-                  center={[hotspot.location.lat, hotspot.location.lng]} 
-                  radius={hotspot.location.radius} 
-                  pathOptions={{ 
-                    fillColor: hotspot.riskLevel === 'HIGH' ? '#ef4444' : '#f59e0b', 
-                    color: hotspot.riskLevel === 'HIGH' ? '#ef4444' : '#f59e0b', 
-                    fillOpacity: 0.15, 
-                    weight: 1,
-                    className: 'hotspot-pulse'
-                  }}
-                >
-                   <Popup className="rounded-xl overflow-hidden shadow-md">
-                     <div className="font-semibold">{hotspot.name}</div>
-                     <div className="text-xs text-civic-muted">{hotspot.reportCount} {hotspot.topCategory} issues</div>
-                   </Popup>
-                </Circle>
-              ))}
+            <div className="flex-1 relative z-0 h-full">
+        <Map 
+          defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
+          center={position}
+          defaultZoom={13}
+          mapId="civicpulse_admin_map"
+          disableDefaultUI={true}
+        >
+          {filteredIssues.map((issue) => {
+            const isSelected = selectedIssueId === issue.id;
+            const size = isSelected ? 24 : 16;
+            return (
+              <AdvancedMarker 
+                key={issue.id} 
+                position={{ lat: issue.location.lat, lng: issue.location.lng }}
+                onClick={() => setSelectedIssueId(issue.id)}
+              >
+                <div style={{ backgroundColor: getStatusColor(issue.status), width: `${size}px`, height: `${size}px`, borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.3)', transition: 'all 0.2s' }}></div>
+              </AdvancedMarker>
+            );
+          })}
 
-              {/* User Location Pin */}
-              {userLocation && (
-                <Marker position={userLocation} icon={createUserIcon()}>
-                  <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-3">
-                    <span className="font-bold text-civic-text text-sm">You are here</span>
-                  </Popup>
-                </Marker>
-              )}
-              
-              {/* Field Teams */}
-              {fieldTeams.map(team => (
-                <Marker
-                  key={`team-${team.id}`}
-                  position={[team.location.lat, team.location.lng]}
-                  icon={createTeamIcon()}
-                >
-                  <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-2">
-                    <div className="text-sm font-bold text-civic-text">{team.name}</div>
-                    <div className="text-xs text-civic-muted capitalize">{team.status.replace('_', ' ').toLowerCase()}</div>
-                  </Popup>
-                </Marker>
-              ))}
+          {filteredTeams.map(team => (
+            <AdvancedMarker 
+              key={team.id} 
+              position={{ lat: team.currentLocation.lat, lng: team.currentLocation.lng }}
+            >
+              <div style={{ backgroundColor: '#3b82f6', width: '14px', height: '14px', borderRadius: '50%', border: '2px solid white', boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: '4px', height: '4px', background: 'white', borderRadius: '50%' }}></div>
+              </div>
+            </AdvancedMarker>
+          ))}
 
-              {/* Filtered Issues */}
-              {filteredIssues.map(issue => (
-                <Marker 
-                  key={issue.id} 
-                  position={[issue.location.lat, issue.location.lng]}
-                  icon={createCustomIcon(getStatusColor(issue.status), (issue.aiAnalysis?.severity === 'HIGH' || issue.aiAnalysis?.severity === 'CRITICAL') ? 20 : 16)}
-                  eventHandlers={{
-                    click: () => {
-                      setSelectedIssueId(issue.id);
-                    },
-                  }}
-                >
-                  <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-0">
-                    <div className="p-3 min-w-[220px]">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-civic-muted uppercase">{issue.id}</span>
-                        <Badge variant={
-                          issue.status === 'RESOLVED' ? 'success' : 
-                          issue.status === 'IN_PROGRESS' ? 'warning' : 'outline'
-                        } className="text-[10px] px-1.5 py-0">
-                          {issue.status.replace('_', ' ')}
-                        </Badge>
-                      </div>
-                      <h4 className="font-bold text-sm text-civic-text mb-1 line-clamp-2">{issue.title}</h4>
-                      <div className="flex gap-2 items-center mb-3">
-                        {(issue.aiAnalysis?.severity === 'HIGH' || issue.aiAnalysis?.severity === 'CRITICAL') && (
-                          <span className="text-[10px] font-bold text-civic-danger bg-civic-danger/10 px-1.5 py-0.5 rounded flex items-center gap-1">
-                            <AlertTriangle size={10} /> {issue.aiAnalysis.severity} PRIORITY
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-civic-muted mb-3 flex items-start gap-1">
-                        <MapPin size={12} className="mt-0.5 flex-shrink-0" />
-                        <span className="line-clamp-2">{issue.location.address}</span>
-                      </div>
-                      <Button size="sm" className="w-full" onClick={() => setSelectedIssueId(issue.id)}>
-                        View Details
-                      </Button>
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
-            </MapContainer>
+          {userLocation && (
+            <AdvancedMarker position={userLocation}>
+               <div style={{ backgroundColor: '#3b82f6', width: '16px', height: '16px', borderRadius: '50%', border: '3px solid white', boxShadow: '0 0 10px rgba(59, 130, 246, 0.8)' }}></div>
+            </AdvancedMarker>
+          )}
+        </Map>
             
             {/* Issue Detail Drawer Overlay */}
             {selectedIssue && (
