@@ -1,24 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
+const fs = require('fs');
+
+const content = `import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall, Edit2, FileText } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useStore } from '../../store/useStore';
 import { analyzeIssue, detectDuplicates } from '../../services/aiService';
-import { AIAnalysis, IssueCategory, Urgency } from '../../types';
+import { AIAnalysis, IssueCategory, Issue, Urgency } from '../../types';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { compressImage } from '../../utils/imageCompression';
-import { saveMediaBlob, getMediaBlob, deleteMediaBlob } from '../../utils/indexedDB';
+import { saveAudioBlob } from '../../utils/indexedDB';
 import L from 'leaflet';
 
 const createCustomIcon = (color: string) => {
   return L.divIcon({
     className: 'custom-div-icon',
-    html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+    html: \`<div style="background-color: \${color}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>\`,
     iconSize: [20, 20],
     iconAnchor: [10, 10]
   });
@@ -83,15 +85,11 @@ const MapPicker = ({ position, onLocationSelect, active }: { position: {lat: num
 const ReportIssue = () => {
   const navigate = useNavigate();
   const routerLocation = useLocation();
-  const { addIssue, currentUser, issues, reportDraft, updateReportDraft, setReportDraft, clearReportDraft } = useStore();
+  const { addIssue, currentUser, issues } = useStore();
   
-  const [showDraftPrompt, setShowDraftPrompt] = useState(false);
-  const [draftRestored, setDraftRestored] = useState(false);
-
   const [step, setStep] = useState(1);
   const [category, setCategory] = useState<string>('');
   const [photo, setPhoto] = useState<string | null>(null);
-  const [photoId, setPhotoId] = useState<string | null>(null);
   const [locationStr, setLocationStr] = useState('Fetching location...');
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
   const [isLocating, setIsLocating] = useState(false);
@@ -111,97 +109,18 @@ const ReportIssue = () => {
   const [isCompressing, setIsCompressing] = useState(false);
   const [storageError, setStorageError] = useState(false);
 
+  // New features state
   const [showEmergencyWarning, setShowEmergencyWarning] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
-  const [voiceRecordingId, setVoiceRecordingId] = useState<string | null>(null);
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
   const [voiceTranscript, setVoiceTranscript] = useState<string>('');
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
-  const recognitionRef = useRef<any>(null);
-  const timerRef = useRef<any>(null);
-
-  // Draft prompt logic
-  useEffect(() => {
-    if (reportDraft && !draftRestored) {
-      setShowDraftPrompt(true);
-    } else {
-      setDraftRestored(true);
-    }
-  }, []); // Only on mount
-
-  const restoreDraft = async () => {
-    if (!reportDraft) return;
-    
-    setCategory(reportDraft.category);
-    setDescription(reportDraft.description);
-    setLocationStr(reportDraft.locationStr);
-    setCoordinates(reportDraft.coordinates);
-    setLocationSource(reportDraft.locationSource);
-    setSearchQuery(reportDraft.searchQuery || '');
-    setUrgency(reportDraft.urgency as Urgency);
-    setContactPhone(reportDraft.contactPhone);
-    setContactEmail(reportDraft.contactEmail);
-    setStep(reportDraft.step);
-    
-    setPhotoId(reportDraft.photoId || null);
-    if (reportDraft.photoId) {
-      try {
-        const data = await getMediaBlob(reportDraft.photoId);
-        if (data) setPhoto(data as string);
-      } catch (e) { console.error("Error restoring photo", e); }
-    }
-
-    setVoiceRecordingId(reportDraft.voiceRecordingId || null);
-    if (reportDraft.voiceRecordingId) {
-      try {
-        const data = await getMediaBlob(reportDraft.voiceRecordingId);
-        if (data) {
-          const blob = data as Blob;
-          setVoiceBlob(blob);
-          setVoiceUrl(URL.createObjectURL(blob));
-          setVoiceTranscript(reportDraft.voiceTranscript || '');
-          setRecordingTime(reportDraft.voiceDuration || 0);
-        }
-      } catch (e) { console.error("Error restoring audio", e); }
-    }
-    
-    setShowDraftPrompt(false);
-    setDraftRestored(true);
-  };
-
-  const discardDraft = () => {
-    if (window.confirm("Start a new report? This will discard your current draft.")) {
-      clearReportDraft();
-      setShowDraftPrompt(false);
-      setDraftRestored(true);
-    }
-  };
-
-  // Auto-save logic
-  useEffect(() => {
-    if (draftRestored && step < 8) {
-      updateReportDraft({
-        category,
-        description,
-        locationStr,
-        coordinates,
-        locationSource,
-        searchQuery,
-        urgency,
-        contactPhone,
-        contactEmail,
-        step,
-        photoId: photoId || undefined,
-        voiceRecordingId: voiceRecordingId || undefined,
-        voiceTranscript,
-        voiceDuration: recordingTime
-      });
-    }
-  }, [category, description, locationStr, coordinates, locationSource, searchQuery, urgency, contactPhone, contactEmail, step, photoId, voiceRecordingId, voiceTranscript, recordingTime, draftRestored]);
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const audioChunksRef = React.useRef<BlobPart[]>([]);
+  const recognitionRef = React.useRef<any>(null);
+  const timerRef = React.useRef<any>(null);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -210,24 +129,12 @@ const ReportIssue = () => {
         setIsCompressing(true);
         const compressedBase64 = await compressImage(file);
         setPhoto(compressedBase64);
-        
-        const newPhotoId = `photo-${Date.now()}`;
-        await saveMediaBlob(newPhotoId, compressedBase64);
-        setPhotoId(newPhotoId);
       } catch (error) {
-        console.error("Failed to process image:", error);
+        console.error("Failed to compress image:", error);
         alert("Failed to process image. Please try another one.");
       } finally {
         setIsCompressing(false);
       }
-    }
-  };
-
-  const handleRemovePhoto = async () => {
-    setPhoto(null);
-    if (photoId) {
-      await deleteMediaBlob(photoId);
-      setPhotoId(null);
     }
   };
 
@@ -244,16 +151,12 @@ const ReportIssue = () => {
         }
       };
 
-      mediaRecorder.onstop = async () => {
+      mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setVoiceBlob(audioBlob);
         const url = URL.createObjectURL(audioBlob);
         setVoiceUrl(url);
         stream.getTracks().forEach(track => track.stop());
-        
-        const newAudioId = `audio-${Date.now()}`;
-        await saveMediaBlob(newAudioId, audioBlob);
-        setVoiceRecordingId(newAudioId);
       };
 
       mediaRecorder.start();
@@ -270,6 +173,7 @@ const ReportIssue = () => {
         });
       }, 1000);
 
+      // Web Speech API
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
@@ -306,21 +210,15 @@ const ReportIssue = () => {
     }
   };
 
-  const deleteRecording = async () => {
+  const deleteRecording = () => {
     setVoiceBlob(null);
     if (voiceUrl) URL.revokeObjectURL(voiceUrl);
     setVoiceUrl(null);
     setVoiceTranscript('');
     setRecordingTime(0);
-    if (voiceRecordingId) {
-      await deleteMediaBlob(voiceRecordingId);
-      setVoiceRecordingId(null);
-    }
   };
 
   useEffect(() => {
-    if (!draftRestored) return;
-    
     const params = new URLSearchParams(routerLocation.search);
     const paramLat = params.get('lat');
     const paramLng = params.get('lng');
@@ -334,7 +232,7 @@ const ReportIssue = () => {
     } else if (step === 5 && !isLocating && !coordinates && !locationError && locationSource === 'GPS') {
       fetchLiveLocation();
     }
-  }, [step, routerLocation.search, draftRestored]);
+  }, [step, routerLocation.search]);
 
   const fetchLiveLocation = () => {
     setIsLocating(true);
@@ -344,7 +242,7 @@ const ReportIssue = () => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           setCoordinates({ lat: position.coords.latitude, lng: position.coords.longitude });
-          setLocationStr(`Lat: ${position.coords.latitude.toFixed(4)}, Lng: ${position.coords.longitude.toFixed(4)}`);
+          setLocationStr(\`Lat: \${position.coords.latitude.toFixed(4)}, Lng: \${position.coords.longitude.toFixed(4)}\`);
           setLocationSource('GPS');
           setIsLocating(false);
           reverseGeocode(position.coords.latitude, position.coords.longitude);
@@ -367,15 +265,15 @@ const ReportIssue = () => {
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const res = await fetch(\`https://nominatim.openstreetmap.org/reverse?format=json&lat=\${lat}&lon=\${lng}\`);
       const data = await res.json();
       if (data && data.display_name) {
         setLocationStr(data.display_name);
       } else {
-        setLocationStr(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+        setLocationStr(\`Lat: \${lat.toFixed(4)}, Lng: \${lng.toFixed(4)}\`);
       }
     } catch (e) {
-      setLocationStr(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+      setLocationStr(\`Lat: \${lat.toFixed(4)}, Lng: \${lng.toFixed(4)}\`);
     }
   };
 
@@ -402,7 +300,7 @@ const ReportIssue = () => {
       if (searchQuery.trim().length >= 3) {
         setIsLocating(true);
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
+          const res = await fetch(\`https://nominatim.openstreetmap.org/search?format=json&q=\${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in\`);
           const data = await res.json();
           setSearchSuggestions(data || []);
         } catch (e) {
@@ -417,29 +315,6 @@ const ReportIssue = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const handleSearchLocation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    setIsLocating(true);
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
-      const data = await res.json();
-      if (data && data.length > 0) {
-        setSearchSuggestions(data);
-        if (data.length === 1) {
-          handleSelectSuggestion(data[0]);
-        }
-      } else {
-        alert("No locations found. Try a nearby landmark, road, sector or full address.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Location search is temporarily unavailable. You can still use Current Location or Drop Pin.");
-    } finally {
-      setIsLocating(false);
-    }
-  };
-
   const handleSelectSuggestion = (suggestion: any) => {
     const newLat = parseFloat(suggestion.lat);
     const newLng = parseFloat(suggestion.lon);
@@ -452,8 +327,8 @@ const ReportIssue = () => {
     setSearchQuery('');
   };
 
-  const getAIAnalysis = async () => {
-    setStep('AI_LOADING' as any);
+  const runAnalysis = async () => {
+    setStep(8);
     setIsAnalyzing(true);
     const analysisText = description.trim() ? description : voiceTranscript;
     const [analysis, dupes] = await Promise.all([
@@ -462,63 +337,67 @@ const ReportIssue = () => {
     ]);
     setAiResult(analysis);
     setDuplicateData(dupes);
-    setIsAnalyzing(false);
-    setStep('AI_REVIEW' as any);
+    handleSubmit(analysis);
   };
 
-  const handleSubmit = async () => {
-    const newId = `CP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+  const handleSubmit = async (analysis: AIAnalysis) => {
+    const newId = \`CP-2026-\${Math.floor(1000 + Math.random() * 9000)}\`;
     
     let voiceRecordingData = undefined;
-    if (voiceBlob && voiceRecordingId) {
-      voiceRecordingData = {
-        id: voiceRecordingId,
-        duration: recordingTime,
-        mimeType: voiceBlob.type || 'audio/webm',
-        transcript: voiceTranscript || undefined
-      };
+    if (voiceBlob) {
+      const audioId = \`audio-\${newId}\`;
+      try {
+        await saveAudioBlob(audioId, voiceBlob);
+        voiceRecordingData = {
+          id: audioId,
+          duration: recordingTime,
+          mimeType: voiceBlob.type || 'audio/webm',
+          transcript: voiceTranscript || undefined
+        };
+      } catch (err) {
+        console.error("Failed to save audio blob to IndexedDB:", err);
+      }
     }
     
     try {
       addIssue({
         id: newId,
-        title: `${category || aiResult?.detectedCategory} at ${locationStr}`,
+        title: \`\${category || analysis?.detectedCategory} at \${locationStr}\`,
         description,
-        category: (category || aiResult?.detectedCategory) as IssueCategory,
+        category: (category || analysis?.detectedCategory) as IssueCategory,
         location: {
           lat: coordinates?.lat || 0,
           lng: coordinates?.lng || 0,
-          address: locationStr + (locationSource !== 'GPS' ? ` (${locationSource})` : ''),
+          address: locationStr + (locationSource !== 'GPS' ? \` (\${locationSource})\` : ''),
           ward: 'Ward 4',
           zone: 'Central'
         },
         photos: photo ? [photo] : [],
         status: 'REPORTED',
-        priority: aiResult?.severity || 'MEDIUM',
-        priorityScore: aiResult?.priorityScore || 50,
+        priority: analysis?.severity || 'MEDIUM',
+        priorityScore: analysis?.priorityScore || 50,
         citizenUrgency: urgency as Urgency,
-        estimatedResolutionTime: aiResult?.estimatedResolutionTime || '2-5 days',
+        estimatedResolutionTime: analysis?.estimatedResolutionTime || '2-5 days',
         reporterId: currentUser?.id || 'user-1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         slaTarget: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        aiAnalysis: aiResult || undefined,
+        aiAnalysis: analysis || undefined,
         contactPhone: contactPhone || undefined,
         contactEmail: contactEmail || undefined,
         voiceRecording: voiceRecordingData,
         timeline: [
-          { id: `tl-${Date.now()}`, status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Issue reported by citizen', actor: 'Citizen' },
-          ...(aiResult ? [{ id: `tl-${Date.now()+1}`, status: 'AI_VERIFIED' as const, timestamp: new Date().toISOString(), description: 'AI categorized and prioritized', actor: 'System AI' }] : [])
+          { id: \`tl-\${Date.now()}\`, status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Issue reported by citizen', actor: 'Citizen' },
+          ...(analysis ? [{ id: \`tl-\${Date.now()+1}\`, status: 'AI_VERIFIED' as const, timestamp: new Date().toISOString(), description: 'AI categorized and prioritized', actor: 'System AI' }] : [])
         ]
       });
-      
       setStorageError(false);
-      clearReportDraft(); // Clear draft on successful submission
-      setStep(8);
+      setIsAnalyzing(false);
     } catch (error) {
       console.error("Storage error:", error);
       setStorageError(true);
-      setStep(7); // Go back to review on error
+      setIsAnalyzing(false);
+      setStep(7); // Go back on error
     }
   };
 
@@ -530,47 +409,16 @@ const ReportIssue = () => {
 
   const canProceedStep2 = description.trim().length >= 5 || voiceBlob !== null;
 
-  if (showDraftPrompt) {
-    return (
-      <div className="max-w-md mx-auto mt-20 p-6 bg-white rounded-2xl shadow-xl text-center border border-civic-border">
-        <div className="w-16 h-16 bg-civic-primary/10 text-civic-primary rounded-full flex items-center justify-center mx-auto mb-4">
-          <FileText size={32} />
-        </div>
-        <h2 className="text-2xl font-bold text-civic-text mb-2">Continue your unfinished report?</h2>
-        <p className="text-civic-muted mb-6">
-          You have an unfinished report draft.
-        </p>
-        <div className="flex flex-col gap-3">
-          <Button onClick={restoreDraft} className="w-full h-12 text-md">
-            Continue Draft
-          </Button>
-          <Button onClick={discardDraft} variant="outline" className="w-full h-12 text-md text-red-500 border-red-200 hover:bg-red-50">
-            Start New Report
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-2xl mx-auto py-4 md:py-8">
-      {/* Draft Indicator */}
-      {reportDraft && step < 8 && step !== ('AI_LOADING' as any) && step !== ('AI_REVIEW' as any) && (
-        <div className="flex items-center justify-end mb-2">
-          <span className="text-xs text-brand-500 bg-brand-100 px-2 py-1 rounded flex items-center gap-1">
-            <Check size={12} /> Draft saved
-          </span>
-        </div>
-      )}
-
       {/* Step Indicator */}
-      {typeof step === 'number' && step < 8 && (
+      {step < 8 && (
         <div className="mb-8 overflow-x-auto pb-4">
           <div className="flex justify-between items-center relative min-w-[500px]">
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-brand-200 -z-10 rounded-full"></div>
             <div 
               className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-civic-primary -z-10 rounded-full transition-all duration-300"
-              style={{ width: `${((step - 1) / 6) * 100}%` }}
+              style={{ width: \`\${((step - 1) / 6) * 100}%\` }}
             ></div>
             
             {STEPS.slice(0, 7).map((s, idx) => {
@@ -636,8 +484,7 @@ const ReportIssue = () => {
                           else setStep(2);
                         }}
                         className={cn(
-                          "flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-civic-primary bg-white hover:border-brand-300 hover:bg-brand-50",
-                          category === cat.id ? "border-civic-primary" : "border-brand-200"
+                          "flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-civic-primary border-brand-200 bg-white hover:border-brand-300 hover:bg-brand-50"
                         )}
                       >
                         <div className={cn("w-12 h-12 rounded-full flex items-center justify-center mb-3", cat.color)}>
@@ -647,13 +494,6 @@ const ReportIssue = () => {
                       </button>
                     ))}
                   </div>
-                  {category && (
-                    <div className="flex justify-end mt-auto pt-4 border-t border-brand-100">
-                      <Button onClick={() => setStep(2)} size="lg" className="px-8">
-                        Continue <ChevronRight size={18} className="ml-1" />
-                      </Button>
-                    </div>
-                  )}
                 </>
               )}
             </motion.div>
@@ -700,7 +540,7 @@ const ReportIssue = () => {
                       ) : (
                         <div className="flex flex-col items-center">
                           <div className="text-red-500 font-bold mb-3 animate-pulse flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-red-500"></span> Recording... 00:${recordingTime.toString().padStart(2, '0')}
+                            <span className="w-2 h-2 rounded-full bg-red-500"></span> Recording... 00:\${recordingTime.toString().padStart(2, '0')}
                           </div>
                           <button onClick={stopRecording} className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center shadow-md hover:bg-red-200 transition-transform hover:scale-105 mb-3">
                             <Square size={24} fill="currentColor" />
@@ -717,7 +557,7 @@ const ReportIssue = () => {
                         </div>
                         <div>
                           <p className="font-bold text-sm text-civic-text">Voice recording ready</p>
-                          <p className="text-xs text-civic-muted">00:${recordingTime.toString().padStart(2, '0')} duration</p>
+                          <p className="text-xs text-civic-muted">00:\${recordingTime.toString().padStart(2, '0')} duration</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -737,7 +577,7 @@ const ReportIssue = () => {
                   {voiceTranscript && (
                     <div className="mt-3 bg-white border border-brand-100 p-3 rounded-lg">
                       <span className="text-[10px] uppercase font-bold text-civic-muted block mb-1">Live Transcript:</span>
-                      <p className="text-sm text-civic-text italic">"${voiceTranscript}"</p>
+                      <p className="text-sm text-civic-text italic">"\${voiceTranscript}"</p>
                     </div>
                   )}
                 </div>
@@ -980,159 +820,73 @@ const ReportIssue = () => {
 
           {step === 7 && (
             <motion.div key="step7" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1 overflow-y-auto pr-2">
+              <div className="mb-4">
+                <button onClick={() => setStep(6)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
+                  <ChevronLeft size={16} className="mr-1" /> Back to Edit
+                </button>
+              </div>
               <PageHeader 
-                title="Review Your Report" 
-                description="Please verify the details before AI analysis." 
+                title="Review Report" 
+                description="Please verify the details before submitting." 
                 className="mb-6"
               />
               
               <div className="space-y-4 mb-8">
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
+                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex gap-4">
+                  <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm text-civic-primary">
+                    <Info size={24} />
+                  </div>
                   <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-1">Issue Category</h4>
+                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-1">Issue</h4>
                     <p className="font-medium text-civic-text">{category}</p>
                   </div>
-                  <button onClick={() => setStep(1)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
                 </div>
 
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div className="flex-1">
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Description</h4>
-                    {description.trim() ? (
-                      <p className="text-sm text-civic-muted italic">"{description}"</p>
-                    ) : (
-                      <p className="text-sm text-civic-muted italic flex items-center gap-2">
-                        <Mic size={16} /> Voice Recording Attached
-                        {voiceTranscript && <span className="block mt-1 text-xs text-brand-500">Transcript: "{voiceTranscript}"</span>}
-                      </p>
-                    )}
-                  </div>
-                  <button onClick={() => setStep(2)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
+                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200">
+                  <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Description</h4>
+                  {description.trim() ? (
+                    <p className="text-sm text-civic-muted italic">"{description}"</p>
+                  ) : (
+                    <p className="text-sm text-civic-muted italic flex items-center gap-2">
+                      <Mic size={16} /> Voice Recording Attached
+                      {voiceTranscript && <span className="block mt-1 text-xs text-brand-500">Transcript: "{voiceTranscript}"</span>}
+                    </p>
+                  )}
                 </div>
 
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Photo</h4>
-                    {photo ? (
-                      <img src={photo} className="h-20 w-32 object-cover rounded-lg border border-brand-200" alt="Preview" />
-                    ) : (
-                      <p className="text-sm font-medium text-red-500">Missing</p>
-                    )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-brand-50 p-4 rounded-xl border border-brand-200">
+                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-1">Photo</h4>
+                    <p className="text-sm font-medium text-green-600 flex items-center gap-1"><Check size={16} /> Attached</p>
                   </div>
-                  <button onClick={() => setStep(3)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
-                </div>
-
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Location</h4>
-                    <p className="text-sm text-civic-muted font-medium mb-1 line-clamp-2">{locationStr}</p>
-                    {coordinates && <p className="text-[10px] text-brand-400 font-mono">LAT: {coordinates.lat.toFixed(6)} | LNG: {coordinates.lng.toFixed(6)}</p>}
-                  </div>
-                  <button onClick={() => setStep(5)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
-                </div>
-                
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
+                  <div className="bg-brand-50 p-4 rounded-xl border border-brand-200">
                     <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-1">Urgency</h4>
                     <p className="text-sm font-bold text-civic-primary">{urgency}</p>
                   </div>
-                  <button onClick={() => setStep(4)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
                 </div>
 
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Contact Info</h4>
-                    <p className="text-sm text-civic-muted">{contactPhone ? `Phone: ${contactPhone}` : 'Phone: Not provided'}</p>
-                    <p className="text-sm text-civic-muted">{contactEmail ? `Email: ${contactEmail}` : 'Email: Not provided'}</p>
-                  </div>
-                  <button onClick={() => setStep(6)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
+                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200">
+                  <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Location</h4>
+                  <p className="text-sm text-civic-muted font-medium mb-1 line-clamp-2">{locationStr}</p>
+                  {coordinates && <p className="text-[10px] text-brand-400 font-mono">LAT: {coordinates.lat.toFixed(6)} | LNG: {coordinates.lng.toFixed(6)}</p>}
+                </div>
+                
+                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200">
+                  <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Contact</h4>
+                  <p className="text-sm text-civic-muted">{contactPhone ? \`Phone: \${contactPhone}\` : 'Phone: Not provided'}</p>
+                  <p className="text-sm text-civic-muted">{contactEmail ? \`Email: \${contactEmail}\` : 'Email: Not provided'}</p>
                 </div>
               </div>
 
               <div className="mt-4 pt-4 border-t border-brand-100 pb-2">
-                <Button onClick={getAIAnalysis} disabled={isAnalyzing} size="lg" className="w-full shadow-lg h-14 relative overflow-hidden">
-                  Run AI Analysis & Verify
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {step === 'AI_LOADING' as any && (
-            <motion.div key="ai_loading" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col items-center justify-center h-full py-16 text-center">
-               <Loader2 className="animate-spin text-civic-primary mb-6" size={48} />
-               <h3 className="text-xl font-bold text-civic-text">Analyzing Report...</h3>
-               <p className="text-civic-muted mt-2">Our AI is verifying category, severity, and checking for duplicates.</p>
-            </motion.div>
-          )}
-
-          {step === 'AI_REVIEW' as any && aiResult && (
-            <motion.div key="ai_review" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
-              <PageHeader 
-                title="AI Analysis Complete" 
-                description="Please review the automated assessment before final submission." 
-                className="mb-6"
-              />
-              
-              <div className="bg-white border-2 border-brand-200 rounded-xl p-6 mb-8 w-full text-left shadow-lg overflow-hidden relative">
-                <div className="absolute top-0 left-0 w-full h-1 bg-civic-primary"></div>
-                
-                <div className="grid grid-cols-2 gap-y-4 gap-x-6 mb-4">
-                  <div>
-                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Category</span>
-                    <span className="font-semibold text-civic-text text-sm">{aiResult.detectedCategory}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Severity</span>
-                    <span className={cn(
-                      "font-bold text-xs px-2 py-1 rounded inline-block",
-                      aiResult.severity === 'HIGH' || aiResult.severity === 'CRITICAL' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'
-                    )}>
-                      {aiResult.severity}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Priority Score</span>
-                    <span className="font-black text-civic-primary text-sm">{aiResult.priorityScore}/100</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Suggested Dept</span>
-                    <span className="font-semibold text-civic-text text-sm">{aiResult.suggestedDepartment}</span>
-                  </div>
-                </div>
-
-                <div className="border-t border-brand-100 pt-4 mb-4">
-                  <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Reasoning</span>
-                  <p className="text-xs text-civic-text italic bg-brand-50 p-2 rounded">
-                    "Calculated based on {aiResult.priorityReasoning.map(r => r.factor.toLowerCase()).join(', ')} resulting in {aiResult.priorityScore} priority points."
-                  </p>
-                </div>
-                
-                {duplicateData?.isDuplicate && (
-                  <div className="bg-red-50 p-3 rounded border border-red-200 mb-4">
-                    <span className="text-[10px] text-red-600 uppercase font-bold tracking-wider block mb-1 flex items-center gap-1"><AlertTriangle size={12}/> Possible Duplicate Found</span>
-                    <p className="text-xs text-red-800">This issue appears very similar to {duplicateData.relatedIssues.length} nearby report(s). It will be linked for authority review.</p>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex flex-col sm:flex-row gap-3 mt-auto pt-4 border-t border-brand-100">
-                <Button onClick={() => setStep(7)} variant="outline" className="flex-1 text-brand-600 border-brand-200">
-                  Edit Report
-                </Button>
-                <Button onClick={handleSubmit} className="flex-1">
-                  Submit Final Report
+                <Button onClick={runAnalysis} disabled={isAnalyzing} size="lg" className="w-full shadow-lg h-14 relative overflow-hidden">
+                  {isAnalyzing ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 size={18} className="animate-spin" /> Submitting & Analyzing...
+                    </div>
+                  ) : (
+                    "Submit Report"
+                  )}
                 </Button>
               </div>
             </motion.div>
@@ -1143,17 +897,72 @@ const ReportIssue = () => {
               <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
                 <CheckCircle2 size={40} />
               </div>
-              <h2 className="text-2xl font-bold text-civic-text mb-2">Civic issue submitted successfully.</h2>
+              <h2 className="text-2xl font-bold text-civic-text mb-2">Your issue has been successfully reported.</h2>
               <p className="text-civic-muted mb-8 font-mono bg-brand-50 px-4 py-2 rounded border border-brand-200">Issue ID: CP-XXXX</p>
               
-              <div className="flex flex-col gap-3 w-full max-w-sm">
-                <Button onClick={() => navigate('/my-reports')} size="lg" className="w-full">
-                  Track Report
-                </Button>
-                <Button onClick={() => navigate('/')} variant="outline" size="lg" className="w-full">
-                  Back to Home
-                </Button>
-              </div>
+              {aiResult && (
+                <div className="bg-white border-2 border-brand-200 rounded-xl p-6 mb-8 w-full max-w-md text-left shadow-lg overflow-hidden relative">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-civic-primary"></div>
+                  <h4 className="font-black text-civic-primary text-sm tracking-wider uppercase mb-5 flex items-center gap-2">
+                    <CheckCircle2 size={16} /> AI-Assisted Analysis
+                  </h4>
+                  
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-6 mb-4">
+                    <div>
+                      <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Category</span>
+                      <span className="font-semibold text-civic-text text-sm">{aiResult.detectedCategory}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Severity</span>
+                      <span className={cn(
+                        "font-bold text-xs px-2 py-1 rounded inline-block",
+                        aiResult.severity === 'HIGH' || aiResult.severity === 'CRITICAL' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'
+                      )}>
+                        {aiResult.severity}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Citizen Urgency</span>
+                      <span className="font-semibold text-civic-text text-sm">{urgency}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Priority</span>
+                      <span className="font-black text-civic-primary text-sm">{aiResult.priorityScore}/100</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Confidence</span>
+                      <span className="font-semibold text-civic-text text-sm">{aiResult.confidence}%</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Status</span>
+                      <span className="font-bold text-civic-primary text-xs">Reported to Department</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-brand-100 pt-4 mb-4">
+                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Reason</span>
+                    <p className="text-xs text-civic-text italic bg-brand-50 p-2 rounded">
+                      "Calculated based on {aiResult.priorityReasoning.map(r => r.factor.toLowerCase()).join(', ')} resulting in {aiResult.priorityScore} priority points."
+                    </p>
+                  </div>
+
+                  <div className="bg-brand-50 p-4 rounded-lg border border-brand-200">
+                    <div className="mb-2">
+                      <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Department</span>
+                      <span className="font-semibold text-civic-text text-sm flex items-center gap-1">🏢 {aiResult.suggestedDepartment}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Estimated Resolution</span>
+                      <span className="font-bold text-civic-primary text-sm bg-white px-2 py-1 rounded border border-brand-200 inline-block">{aiResult.estimatedResolutionTime}</span>
+                      <p className="text-[10px] text-civic-muted mt-2 leading-tight">Estimate only — actual resolution may vary based on field verification and workload.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <Button onClick={() => navigate('/my-reports')} size="lg" className="w-full max-w-md">
+                View My Reports
+              </Button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1163,3 +972,7 @@ const ReportIssue = () => {
 };
 
 export default ReportIssue;
+`;
+
+fs.writeFileSync('c:/Users/mandh/Downloads/civicpulse-upgraded/src/pages/citizen/ReportIssue.tsx', content);
+console.log('ReportIssue.tsx has been successfully rewritten.');

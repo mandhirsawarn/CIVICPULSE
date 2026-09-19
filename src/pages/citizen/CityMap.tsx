@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useStore } from '../../store/useStore';
@@ -61,7 +61,7 @@ const CityMap = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [searchPin, setSearchPin] = useState<{lat: number, lng: number, label: string} | null>(null);
+  const [searchPin, setSearchPin] = useState<{lat: number, lng: number, label: string, isManual?: boolean} | null>(null);
   
   // Default center (India center)
   const [position, setPosition] = useState<[number, number]>([20.5937, 78.9629]); 
@@ -92,6 +92,31 @@ const CityMap = () => {
       setIsLocating(false);
     }
   }, []);
+
+  const reverseGeocode = async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      if (data && data.display_name) {
+        return data.display_name;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+  };
+
+  const MapEvents = () => {
+    useMapEvents({
+      click: async (e: any) => {
+        const { lat, lng } = e.latlng;
+        setSearchPin({ lat, lng, label: 'Fetching address...', isManual: true });
+        const address = await reverseGeocode(lat, lng);
+        setSearchPin({ lat, lng, label: address, isManual: true });
+      }
+    });
+    return null;
+  };
 
   React.useEffect(() => {
     locateUser();
@@ -346,6 +371,7 @@ const CityMap = () => {
 
         <MapContainer center={position} zoom={13} style={{ height: '100%', width: '100%' }}>
           <MapController center={position} trigger={flyTrigger} />
+          <MapEvents />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -400,8 +426,11 @@ const CityMap = () => {
           {searchPin && (
             <Marker position={[searchPin.lat, searchPin.lng]} icon={createCustomIcon('#3b82f6')}>
               <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-3 min-w-[200px]">
-                <div className="font-bold text-civic-text text-sm mb-1">{searchPin.label}</div>
-                <div className="text-xs text-civic-muted mb-3">Searched Location</div>
+                <div className="font-bold text-civic-text text-sm mb-1">Location Details</div>
+                <div className="text-xs text-civic-muted mb-2 font-medium leading-tight">{searchPin.label}</div>
+                <div className="text-[10px] text-brand-400 font-mono mb-3">
+                  Lat: {searchPin.lat.toFixed(6)} | Lng: {searchPin.lng.toFixed(6)}
+                </div>
                 <Link to={`/report?lat=${searchPin.lat}&lng=${searchPin.lng}&address=${encodeURIComponent(searchPin.label)}`} className="block w-full">
                   <Button size="sm" className="w-full">Report Issue Here</Button>
                 </Link>

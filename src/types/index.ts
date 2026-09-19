@@ -125,6 +125,24 @@ export interface Hotspot {
   trend: number; // e.g., 32 for +32%
 }
 
+export interface ReportDraft {
+  category: string;
+  description: string;
+  voiceRecordingId?: string;
+  voiceTranscript?: string;
+  voiceDuration?: number;
+  photoId?: string; // id in IndexedDB
+  locationStr: string;
+  coordinates: { lat: number; lng: number } | null;
+  locationSource: 'GPS' | 'Manual' | 'Search';
+  searchQuery: string;
+  urgency: Urgency | '';
+  contactPhone: string;
+  contactEmail: string;
+  step: number;
+  updatedAt: string;
+}
+
 export interface Notification {
   id: string;
   userId: string;

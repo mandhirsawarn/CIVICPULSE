@@ -1,5 +1,6 @@
 export const DB_NAME = 'CivicPulseDB';
 export const STORE_NAME = 'audioRecords';
+export const MEDIA_STORE = 'mediaRecords';
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -9,6 +10,9 @@ export const initDB = (): Promise<IDBDatabase> => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(MEDIA_STORE)) {
+        db.createObjectStore(MEDIA_STORE, { keyPath: 'id' });
       }
     };
     
@@ -48,6 +52,44 @@ export const deleteAudioBlob = async (id: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
+    const request = store.delete(id);
+    
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const saveMediaBlob = async (id: string, data: string | Blob): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([MEDIA_STORE], 'readwrite');
+    const store = transaction.objectStore(MEDIA_STORE);
+    const request = store.put({ id, data });
+    
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const getMediaBlob = async (id: string): Promise<string | Blob | null> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([MEDIA_STORE], 'readonly');
+    const store = transaction.objectStore(MEDIA_STORE);
+    const request = store.get(id);
+    
+    request.onsuccess = () => {
+      resolve(request.result ? request.result.data : null);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const deleteMediaBlob = async (id: string): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([MEDIA_STORE], 'readwrite');
+    const store = transaction.objectStore(MEDIA_STORE);
     const request = store.delete(id);
     
     request.onsuccess = () => resolve();

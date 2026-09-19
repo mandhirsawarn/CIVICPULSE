@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+const fs = require('fs');
+
+const content = `import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Map as MapIcon, PlusCircle, User, Bell, FileText, Users, MapPin, AlertTriangle } from 'lucide-react';
 import { cn } from '../utils/cn';
@@ -170,3 +172,6 @@ const CitizenLayout = () => {
 };
 
 export default CitizenLayout;
+`;
+
+fs.writeFileSync('c:/Users/mandh/Downloads/civicpulse-upgraded/src/layouts/CitizenLayout.tsx', content);

@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+const fs = require('fs');
+
+const content = `import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall, Edit2, FileText } from 'lucide-react';
+import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall, Edit2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useStore } from '../../store/useStore';
@@ -18,7 +20,7 @@ import L from 'leaflet';
 const createCustomIcon = (color: string) => {
   return L.divIcon({
     className: 'custom-div-icon',
-    html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+    html: \`<div style="background-color: \${color}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>\`,
     iconSize: [20, 20],
     iconAnchor: [10, 10]
   });
@@ -211,7 +213,7 @@ const ReportIssue = () => {
         const compressedBase64 = await compressImage(file);
         setPhoto(compressedBase64);
         
-        const newPhotoId = `photo-${Date.now()}`;
+        const newPhotoId = \`photo-\${Date.now()}\`;
         await saveMediaBlob(newPhotoId, compressedBase64);
         setPhotoId(newPhotoId);
       } catch (error) {
@@ -251,7 +253,7 @@ const ReportIssue = () => {
         setVoiceUrl(url);
         stream.getTracks().forEach(track => track.stop());
         
-        const newAudioId = `audio-${Date.now()}`;
+        const newAudioId = \`audio-\${Date.now()}\`;
         await saveMediaBlob(newAudioId, audioBlob);
         setVoiceRecordingId(newAudioId);
       };
@@ -344,7 +346,7 @@ const ReportIssue = () => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           setCoordinates({ lat: position.coords.latitude, lng: position.coords.longitude });
-          setLocationStr(`Lat: ${position.coords.latitude.toFixed(4)}, Lng: ${position.coords.longitude.toFixed(4)}`);
+          setLocationStr(\`Lat: \${position.coords.latitude.toFixed(4)}, Lng: \${position.coords.longitude.toFixed(4)}\`);
           setLocationSource('GPS');
           setIsLocating(false);
           reverseGeocode(position.coords.latitude, position.coords.longitude);
@@ -367,15 +369,15 @@ const ReportIssue = () => {
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const res = await fetch(\`https://nominatim.openstreetmap.org/reverse?format=json&lat=\${lat}&lon=\${lng}\`);
       const data = await res.json();
       if (data && data.display_name) {
         setLocationStr(data.display_name);
       } else {
-        setLocationStr(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+        setLocationStr(\`Lat: \${lat.toFixed(4)}, Lng: \${lng.toFixed(4)}\`);
       }
     } catch (e) {
-      setLocationStr(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+      setLocationStr(\`Lat: \${lat.toFixed(4)}, Lng: \${lng.toFixed(4)}\`);
     }
   };
 
@@ -402,7 +404,7 @@ const ReportIssue = () => {
       if (searchQuery.trim().length >= 3) {
         setIsLocating(true);
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
+          const res = await fetch(\`https://nominatim.openstreetmap.org/search?format=json&q=\${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in\`);
           const data = await res.json();
           setSearchSuggestions(data || []);
         } catch (e) {
@@ -422,7 +424,7 @@ const ReportIssue = () => {
     if (!searchQuery.trim()) return;
     setIsLocating(true);
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
+      const res = await fetch(\`https://nominatim.openstreetmap.org/search?format=json&q=\${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in\`);
       const data = await res.json();
       if (data && data.length > 0) {
         setSearchSuggestions(data);
@@ -467,7 +469,7 @@ const ReportIssue = () => {
   };
 
   const handleSubmit = async () => {
-    const newId = `CP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newId = \`CP-2026-\${Math.floor(1000 + Math.random() * 9000)}\`;
     
     let voiceRecordingData = undefined;
     if (voiceBlob && voiceRecordingId) {
@@ -482,13 +484,13 @@ const ReportIssue = () => {
     try {
       addIssue({
         id: newId,
-        title: `${category || aiResult?.detectedCategory} at ${locationStr}`,
+        title: \`\${category || aiResult?.detectedCategory} at \${locationStr}\`,
         description,
         category: (category || aiResult?.detectedCategory) as IssueCategory,
         location: {
           lat: coordinates?.lat || 0,
           lng: coordinates?.lng || 0,
-          address: locationStr + (locationSource !== 'GPS' ? ` (${locationSource})` : ''),
+          address: locationStr + (locationSource !== 'GPS' ? \` (\${locationSource})\` : ''),
           ward: 'Ward 4',
           zone: 'Central'
         },
@@ -507,8 +509,8 @@ const ReportIssue = () => {
         contactEmail: contactEmail || undefined,
         voiceRecording: voiceRecordingData,
         timeline: [
-          { id: `tl-${Date.now()}`, status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Issue reported by citizen', actor: 'Citizen' },
-          ...(aiResult ? [{ id: `tl-${Date.now()+1}`, status: 'AI_VERIFIED' as const, timestamp: new Date().toISOString(), description: 'AI categorized and prioritized', actor: 'System AI' }] : [])
+          { id: \`tl-\${Date.now()}\`, status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Issue reported by citizen', actor: 'Citizen' },
+          ...(aiResult ? [{ id: \`tl-\${Date.now()+1}\`, status: 'AI_VERIFIED' as const, timestamp: new Date().toISOString(), description: 'AI categorized and prioritized', actor: 'System AI' }] : [])
         ]
       });
       
@@ -570,7 +572,7 @@ const ReportIssue = () => {
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-brand-200 -z-10 rounded-full"></div>
             <div 
               className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-civic-primary -z-10 rounded-full transition-all duration-300"
-              style={{ width: `${((step - 1) / 6) * 100}%` }}
+              style={{ width: \`\${((step - 1) / 6) * 100}%\` }}
             ></div>
             
             {STEPS.slice(0, 7).map((s, idx) => {
@@ -700,7 +702,7 @@ const ReportIssue = () => {
                       ) : (
                         <div className="flex flex-col items-center">
                           <div className="text-red-500 font-bold mb-3 animate-pulse flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-red-500"></span> Recording... 00:${recordingTime.toString().padStart(2, '0')}
+                            <span className="w-2 h-2 rounded-full bg-red-500"></span> Recording... 00:\${recordingTime.toString().padStart(2, '0')}
                           </div>
                           <button onClick={stopRecording} className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center shadow-md hover:bg-red-200 transition-transform hover:scale-105 mb-3">
                             <Square size={24} fill="currentColor" />
@@ -717,7 +719,7 @@ const ReportIssue = () => {
                         </div>
                         <div>
                           <p className="font-bold text-sm text-civic-text">Voice recording ready</p>
-                          <p className="text-xs text-civic-muted">00:${recordingTime.toString().padStart(2, '0')} duration</p>
+                          <p className="text-xs text-civic-muted">00:\${recordingTime.toString().padStart(2, '0')} duration</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -737,7 +739,7 @@ const ReportIssue = () => {
                   {voiceTranscript && (
                     <div className="mt-3 bg-white border border-brand-100 p-3 rounded-lg">
                       <span className="text-[10px] uppercase font-bold text-civic-muted block mb-1">Live Transcript:</span>
-                      <p className="text-sm text-civic-text italic">"${voiceTranscript}"</p>
+                      <p className="text-sm text-civic-text italic">"\${voiceTranscript}"</p>
                     </div>
                   )}
                 </div>
@@ -1052,8 +1054,8 @@ const ReportIssue = () => {
                 <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
                   <div>
                     <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Contact Info</h4>
-                    <p className="text-sm text-civic-muted">{contactPhone ? `Phone: ${contactPhone}` : 'Phone: Not provided'}</p>
-                    <p className="text-sm text-civic-muted">{contactEmail ? `Email: ${contactEmail}` : 'Email: Not provided'}</p>
+                    <p className="text-sm text-civic-muted">{contactPhone ? \`Phone: \${contactPhone}\` : 'Phone: Not provided'}</p>
+                    <p className="text-sm text-civic-muted">{contactEmail ? \`Email: \${contactEmail}\` : 'Email: Not provided'}</p>
                   </div>
                   <button onClick={() => setStep(6)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
                     <Edit2 size={14} className="mr-1" /> Edit
@@ -1163,3 +1165,6 @@ const ReportIssue = () => {
 };
 
 export default ReportIssue;
+`;
+
+fs.writeFileSync('c:/Users/mandh/Downloads/civicpulse-upgraded/src/pages/citizen/ReportIssue.tsx', content);

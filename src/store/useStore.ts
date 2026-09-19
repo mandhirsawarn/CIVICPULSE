@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Issue, Department, FieldTeam, CivicChallenge, User, Hotspot, Notification, IssueCategory, Severity } from '../types';
+import { Issue, Department, FieldTeam, CivicChallenge, User, Hotspot, Notification, IssueCategory, Severity, ReportDraft } from '../types';
 import { mockIssues, mockDepartments, mockFieldTeams, mockChallenges, mockHotspots } from '../mockData';
 
 interface StoreState {
@@ -12,6 +12,7 @@ interface StoreState {
   hotspots: Hotspot[];
   notifications: Notification[];
   cityPulseScore: number;
+  reportDraft: ReportDraft | null;
   
   setCurrentUser: (user: User | null) => void;
   addIssue: (issue: Issue) => void;
@@ -20,6 +21,9 @@ interface StoreState {
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
   markNotificationRead: (id: string) => void;
   recalculateHotspots: () => void;
+  setReportDraft: (draft: ReportDraft | null) => void;
+  updateReportDraft: (updates: Partial<ReportDraft>) => void;
+  clearReportDraft: () => void;
 }
 
 // Simple Haversine for store
@@ -49,7 +53,18 @@ export const useStore = create<StoreState>()(
       hotspots: mockHotspots,
       notifications: [],
       cityPulseScore: 84,
+      reportDraft: null,
       setCurrentUser: (user) => set({ currentUser: user }),
+      
+      setReportDraft: (draft) => set({ reportDraft: draft }),
+      updateReportDraft: (updates) => set((state) => ({ 
+        reportDraft: state.reportDraft 
+          ? { ...state.reportDraft, ...updates, updatedAt: new Date().toISOString() } 
+          : { 
+              category: '', description: '', locationStr: 'Fetching location...', coordinates: null, locationSource: 'GPS', searchQuery: '', urgency: '', contactPhone: '', contactEmail: '', step: 1, ...updates, updatedAt: new Date().toISOString() 
+            } as ReportDraft
+      })),
+      clearReportDraft: () => set({ reportDraft: null }),
       
       addIssue: (issue) => {
         set((state) => ({ issues: [issue, ...state.issues] }));
