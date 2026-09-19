@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, useMapEvents } from 'react-leaflet';
@@ -46,6 +46,7 @@ const MapClickHandler = ({ onLocationSelect, active }: { onLocationSelect: (lat:
 
 const ReportIssue = () => {
   const navigate = useNavigate();
+  const routerLocation = useLocation();
   const { addIssue, currentUser, issues } = useStore();
   
   const [step, setStep] = useState(1);
@@ -122,10 +123,20 @@ const ReportIssue = () => {
   };
 
   useEffect(() => {
-    if (step === 4 && !isLocating && !coordinates && !locationError) {
+    const params = new URLSearchParams(routerLocation.search);
+    const paramLat = params.get('lat');
+    const paramLng = params.get('lng');
+    const paramAddr = params.get('address');
+    
+    if (paramLat && paramLng && step === 1) {
+      setCoordinates({ lat: parseFloat(paramLat), lng: parseFloat(paramLng) });
+      setLocationStr(paramAddr || 'Selected from Map');
+      setLocationSource('Search');
+      setStep(4);
+    } else if (step === 4 && !isLocating && !coordinates && !locationError) {
       fetchLiveLocation();
     }
-  }, [step]);
+  }, [step, routerLocation.search]);
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {

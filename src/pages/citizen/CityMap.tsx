@@ -278,6 +278,13 @@ const CityMap = () => {
             </div>
           )}
 
+          {!isSearching && searchQuery.length >= 3 && searchSuggestions.length === 0 && (
+            <div className="bg-white border border-brand-200 rounded-lg shadow-lg p-4 text-sm text-center">
+              <div className="font-bold text-civic-text mb-1">No exact matches found</div>
+              <div className="text-xs text-civic-muted">Try a broader search (like the city name) or explore the map manually.</div>
+            </div>
+          )}
+
           {searchSuggestions.length > 0 && (
             <div className="bg-white border border-brand-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
               {searchSuggestions.map((sugg, idx) => {
@@ -392,9 +399,12 @@ const CityMap = () => {
           {/* Searched Location Pin */}
           {searchPin && (
             <Marker position={[searchPin.lat, searchPin.lng]} icon={createCustomIcon('#3b82f6')}>
-              <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-3 min-w-[150px]">
+              <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-3 min-w-[200px]">
                 <div className="font-bold text-civic-text text-sm mb-1">{searchPin.label}</div>
-                <div className="text-xs text-civic-muted">Searched Location</div>
+                <div className="text-xs text-civic-muted mb-3">Searched Location</div>
+                <Link to={`/report?lat=${searchPin.lat}&lng=${searchPin.lng}&address=${encodeURIComponent(searchPin.label)}`} className="block w-full">
+                  <Button size="sm" className="w-full">Report Issue Here</Button>
+                </Link>
               </Popup>
             </Marker>
           )}
