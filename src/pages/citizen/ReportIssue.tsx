@@ -902,7 +902,10 @@ const ReportIssue = () => {
 
                 <div className="w-full h-[250px] bg-brand-100 rounded-xl overflow-hidden relative border border-brand-200 mb-4 z-0">
                   <MapContainer center={[30.7333, 76.7794]} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-                    <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
                     <MapPicker position={coordinates} onLocationSelect={handleMapClick} active={isDropPinMode || locationSource === 'Manual'} />
                   </MapContainer>
                   
