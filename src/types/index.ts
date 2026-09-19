@@ -53,6 +53,12 @@ export interface Issue {
   reporterId: string;
   createdAt: string;
   updatedAt: string;
+  voiceRecording?: {
+    id: string;
+    duration: number;
+    mimeType: string;
+    transcript?: string;
+  };
   aiAnalysis?: AIAnalysis;
   assignedDepartmentId?: string;
   assignedTeamId?: string;

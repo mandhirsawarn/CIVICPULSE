@@ -91,6 +91,51 @@ const Home = () => {
         </div>
       </motion.section>
 
+      {/* EMERGENCY HELP SECTION */}
+      <motion.section variants={itemVariants} className="bg-red-50 border border-red-100 rounded-2xl p-6 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+        <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
+          <div className="md:w-1/3 text-center md:text-left">
+            <h2 className="text-xl font-black text-red-700 flex items-center justify-center md:justify-start gap-2 mb-2">
+              <AlertCircle size={24} className="animate-pulse" /> EMERGENCY HELP
+            </h2>
+            <p className="text-sm text-red-600 mb-4">
+              Need immediate assistance? For emergencies, call 112 directly.
+            </p>
+            <a href="tel:112" className="inline-block w-full">
+              <Button size="lg" className="w-full bg-red-600 hover:bg-red-700 text-white gap-2 border-0">
+                📞 Call 112 (Integrated Emergency)
+              </Button>
+            </a>
+          </div>
+          
+          <div className="md:w-2/3 w-full border-t border-red-200 md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-6">
+            <h3 className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-3">Official Helplines (Chandigarh / India)</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { name: 'Police', num: '100' },
+                { name: 'Fire', num: '101' },
+                { name: 'Ambulance', num: '108' },
+                { name: 'Women', num: '1091' },
+                { name: 'Child', num: '1098' },
+                { name: 'Road Crash', num: '1073' },
+                { name: 'Cyber Crime', num: '1930' }
+              ].map(contact => (
+                <a key={contact.name} href={`tel:${contact.num}`} className="block">
+                  <div className="bg-white border border-red-100 rounded-lg p-2 text-center hover:shadow-md transition-shadow cursor-pointer">
+                    <div className="text-[10px] text-gray-500 font-bold truncate">{contact.name}</div>
+                    <div className="text-sm font-black text-red-600">{contact.num}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
+            <p className="text-[10px] text-red-400 mt-3 text-center md:text-left">
+              CivicPulse is for reporting non-emergency civic issues. For immediate danger, contact the appropriate emergency service directly.
+            </p>
+          </div>
+        </div>
+      </motion.section>
+
       {/* SECTION 1: City Pulse Overview */}
       <motion.section variants={itemVariants}>
         <div className="flex items-center justify-between mb-6">
