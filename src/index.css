@@ -3,7 +3,9 @@
 
 @layer base {
   body {
-    @apply font-sans antialiased text-civic-text bg-civic-background;
+    background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 45%, #F8FAFC 100%);
+    min-height: 100vh;
+    @apply font-sans antialiased text-civic-text text-slate-900;
   }
 }
 

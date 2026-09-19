@@ -1,17 +1,18 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Award, FileText, CheckCircle2, ShieldCheck, Settings, Bell, ChevronRight, LogOut, User } from 'lucide-react';
+import { Award, FileText, CheckCircle2, ShieldCheck, Settings, Bell, ChevronRight, LogOut, User, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { SectionHeader } from '../../components/ui/SectionHeader';
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.05 } },
+  show: { opacity: 1, transition: { staggerChildren: 0.06 } },
 };
 const itemVariants = {
-  hidden: { opacity: 0, y: 10 },
+  hidden: { opacity: 0, y: 12 },
   show: { opacity: 1, y: 0 },
 };
 
@@ -37,127 +38,144 @@ const Profile = () => {
   };
 
   return (
-    <motion.div className="max-w-2xl mx-auto space-y-6 pb-6 pt-4" variants={containerVariants} initial="hidden" animate="show">
+    <motion.div className="max-w-3xl mx-auto space-y-6 pb-12 pt-4" variants={containerVariants} initial="hidden" animate="show">
       <motion.div variants={itemVariants}>
-        <h1 className="text-2xl font-bold text-civic-text mb-6">Profile Settings</h1>
+        <SectionHeader 
+          eyebrow="CITIZEN ACCOUNT"
+          title="Profile & Civic Score" 
+          description="Manage your personal credentials, impact record, and municipal communication channels."
+        />
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <Card className="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left">
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-brand-100 text-3xl font-bold text-civic-primary border border-brand-200">
+        <Card className="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left p-6 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)]">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-2xl font-extrabold text-blue-600 border border-blue-100 shadow-xs">
             {initials}
           </div>
           <div className="flex-1 w-full">
             {isEditing ? (
               <div className="space-y-3 w-full max-w-sm">
                 <div>
-                  <label className="text-xs font-semibold text-civic-muted uppercase">Name</label>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Full Name</label>
                   <input 
                     type="text" 
                     value={editName} 
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-3 py-2 border border-civic-border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-civic-primary/50 focus:border-civic-primary outline-none"
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-medium text-slate-800"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-civic-muted uppercase">Email</label>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Email Address</label>
                   <input 
                     type="email" 
                     value={editEmail} 
                     onChange={(e) => setEditEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-civic-border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-civic-primary/50 focus:border-civic-primary outline-none"
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-medium text-slate-800"
                   />
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <Button size="sm" onClick={handleSave}>Save Changes</Button>
-                  <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+                  <Button size="sm" onClick={handleSave} className="rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800">Save Changes</Button>
+                  <Button size="sm" variant="outline" onClick={() => setIsEditing(false)} className="rounded-xl font-semibold">Cancel</Button>
                 </div>
               </div>
             ) : (
               <>
-                <h2 className="text-xl font-bold text-civic-text">{currentUser?.name}</h2>
-                <p className="text-sm text-civic-muted mb-4">{currentUser?.email}</p>
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-civic-accent/10 px-3 py-1 text-xs font-semibold text-civic-accent">
-                  <Award size={14} /> Verified Contributor
+                <h2 className="text-xl font-extrabold text-slate-900 mb-1">{currentUser?.name}</h2>
+                <p className="text-xs text-slate-500 mb-3">{currentUser?.email}</p>
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
+                  <Award size={14} className="text-emerald-600" /> Verified Civic Contributor
                 </div>
               </>
             )}
           </div>
           {!isEditing && (
             <div>
-              <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit Profile</Button>
+              <Button variant="outline" size="sm" onClick={() => setIsEditing(true)} className="rounded-xl font-semibold text-xs border-slate-200">
+                Edit Profile
+              </Button>
             </div>
           )}
         </Card>
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <h3 className="font-semibold text-civic-text mb-4">Contribution Impact</h3>
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Contribution Impact</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="flex flex-col items-center justify-center text-center py-6">
-            <FileText className="mb-2 h-6 w-6 text-brand-400" />
-            <p className="text-3xl font-bold text-civic-text mb-1">{userIssues.length}</p>
-            <p className="text-xs font-medium uppercase tracking-wider text-civic-muted">Reports Submitted</p>
+          <Card className="flex flex-col items-center justify-center text-center p-5 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 mb-2">
+              <FileText size={22} />
+            </div>
+            <p className="text-3xl font-extrabold text-slate-900 tracking-tight tabular-nums mb-0.5">{userIssues.length}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Reports Submitted</p>
           </Card>
-          <Card className="flex flex-col items-center justify-center text-center py-6">
-            <CheckCircle2 className="mb-2 h-6 w-6 text-civic-accent" />
-            <p className="text-3xl font-bold text-civic-text mb-1">{resolved}</p>
-            <p className="text-xs font-medium uppercase tracking-wider text-civic-muted">Issues Resolved</p>
+
+          <Card className="flex flex-col items-center justify-center text-center p-5 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 mb-2">
+              <CheckCircle2 size={22} />
+            </div>
+            <p className="text-3xl font-extrabold text-slate-900 tracking-tight tabular-nums mb-0.5">{resolved}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Issues Resolved</p>
           </Card>
-          <Card className="flex flex-col items-center justify-center text-center py-6">
-            <Award className="mb-2 h-6 w-6 text-civic-secondary" />
-            <p className="text-3xl font-bold text-civic-text mb-1">{currentUser?.civicPoints ?? 0}</p>
-            <p className="text-xs font-medium uppercase tracking-wider text-civic-muted">Civic Points</p>
+
+          <Card className="flex flex-col items-center justify-center text-center p-5 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 border border-amber-100 text-amber-600 mb-2">
+              <Award size={22} />
+            </div>
+            <p className="text-3xl font-extrabold text-slate-900 tracking-tight tabular-nums mb-0.5">{currentUser?.civicPoints ?? 0}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Civic Points</p>
           </Card>
         </div>
       </motion.div>
 
-      <motion.div variants={itemVariants} className="space-y-4">
-        <h3 className="font-semibold text-civic-text mb-4 mt-8">Account & Preferences</h3>
+      <motion.div variants={itemVariants} className="space-y-3">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 mt-4">Account & Preferences</h3>
         
-        <div className="bg-white rounded-xl border border-civic-border overflow-hidden shadow-sm">
-          <Link to="/my-reports" className="flex items-center justify-between p-4 transition-colors hover:bg-brand-50 border-b border-brand-100">
+        <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-[0_4px_20px_rgba(15,23,42,0.03)] divide-y divide-slate-100">
+          <Link to="/my-reports" className="flex items-center justify-between p-4 transition-colors hover:bg-slate-50/80">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-civic-muted">
-                <FileText size={16} />
+              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                <FileText size={17} />
               </div>
-              <span className="text-sm font-semibold text-civic-text">My Reports</span>
+              <div>
+                <span className="text-sm font-bold text-slate-900 block">My Submitted Reports</span>
+                <span className="text-xs text-slate-500">View progress and resolution updates</span>
+              </div>
             </div>
-            <ChevronRight className="h-4 w-4 text-brand-400" />
+            <ChevronRight className="h-4 w-4 text-slate-400" />
           </Link>
 
-          <button className="w-full flex items-center justify-between p-4 transition-colors hover:bg-brand-50 border-b border-brand-100">
+          <button className="w-full flex items-center justify-between p-4 transition-colors hover:bg-slate-50/80 text-left">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-civic-muted">
-                <Bell size={16} />
+              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                <Bell size={17} />
               </div>
-              <div className="text-left">
-                <span className="text-sm font-semibold text-civic-text block">Notifications</span>
-                <span className="text-xs text-civic-muted">Email, push, SMS</span>
+              <div>
+                <span className="text-sm font-bold text-slate-900 block">Notifications & Alerts</span>
+                <span className="text-xs text-slate-500">Push, SMS, and WhatsApp alerts for ward status</span>
               </div>
             </div>
-            <ChevronRight className="h-4 w-4 text-brand-400" />
+            <ChevronRight className="h-4 w-4 text-slate-400" />
           </button>
 
-          <Link to="/admin/login" className="flex items-center justify-between p-4 transition-colors hover:bg-brand-50 border-b border-brand-100">
+          <Link to="/admin/login" className="flex items-center justify-between p-4 transition-colors hover:bg-slate-50/80">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-civic-primary/10 flex items-center justify-center text-civic-primary">
-                <ShieldCheck size={16} />
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                <ShieldCheck size={17} />
               </div>
-              <div className="text-left">
-                <span className="text-sm font-semibold text-civic-text block">Authority Portal</span>
-                <span className="text-xs text-civic-muted">Access for city officials</span>
+              <div>
+                <span className="text-sm font-bold text-slate-900 block">Authority & Partner Portal</span>
+                <span className="text-xs text-slate-500">Secure access for municipal department leads</span>
               </div>
             </div>
-            <ChevronRight className="h-4 w-4 text-brand-400" />
+            <ChevronRight className="h-4 w-4 text-slate-400" />
           </Link>
           
-          <button className="w-full flex items-center justify-between p-4 transition-colors hover:bg-brand-50 text-civic-danger">
+          <button className="w-full flex items-center justify-between p-4 transition-colors hover:bg-rose-50/50 text-rose-600">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-civic-danger/10 flex items-center justify-center">
-                <LogOut size={16} />
+              <div className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600">
+                <LogOut size={17} />
               </div>
-              <span className="text-sm font-semibold">Sign Out</span>
+              <span className="text-sm font-bold">Sign Out</span>
             </div>
           </button>
         </div>

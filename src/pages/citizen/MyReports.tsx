@@ -6,8 +6,10 @@ import { useStore } from '../../store/useStore';
 import { cn } from '../../utils/cn';
 import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
-import { PageHeader } from '../../components/ui/PageHeader';
+import { Button } from '../../components/ui/Button';
 import { StatCard } from '../../components/ui/StatCard';
+import { PriorityBadge } from '../../components/ui/PriorityBadge';
+import { SectionHeader } from '../../components/ui/SectionHeader';
 
 const FILTERS = ['All', 'Active', 'Resolved'] as const;
 
@@ -58,37 +60,48 @@ const MyReports = () => {
   return (
     <motion.div className="space-y-8" variants={containerVariants} initial="hidden" animate="show">
       <motion.div variants={itemVariants}>
-        <PageHeader title="My Reports" description="Track the status of issues you've reported in the city." />
+        <SectionHeader 
+          eyebrow="CITIZEN REPORTS"
+          title="My Reported Issues" 
+          description="Track official department assignment, resolution status, and SLA timeline for issues you've reported." 
+          action={
+            <Link to="/report">
+              <Button size="sm" className="font-bold shadow-xs">
+                + Report New Issue
+              </Button>
+            </Link>
+          }
+        />
       </motion.div>
 
-      <motion.div variants={itemVariants} className="grid grid-cols-3 gap-4">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard title="Total Reports" value={userIssues.length} icon={Inbox} />
-        <StatCard title="Active" value={activeCount} icon={Clock} />
-        <StatCard title="Resolved" value={resolvedCount} icon={MapPin} />
+        <StatCard title="Active In Progress" value={activeCount} icon={Clock} valueColor="text-amber-700" />
+        <StatCard title="Resolved Issues" value={resolvedCount} icon={MapPin} valueColor="text-emerald-700" />
       </motion.div>
 
-      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-civic-border shadow-sm">
-        <div className="flex bg-brand-50 rounded-lg px-3 py-2 border border-brand-200 w-full sm:w-80 focus-within:border-civic-primary transition-colors">
-          <Search size={18} className="text-brand-400 mr-2" />
+      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)]">
+        <div className="flex bg-slate-50 rounded-xl px-3.5 py-2 border border-slate-200/80 w-full sm:w-80 focus-within:border-blue-600 focus-within:bg-white transition-colors">
+          <Search size={17} className="text-slate-400 mr-2 shrink-0 self-center" />
           <input 
             type="text" 
             placeholder="Search by ID or title..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-sm w-full text-civic-text placeholder:text-brand-400"
+            className="bg-transparent border-none outline-none text-xs sm:text-sm w-full text-slate-900 placeholder:text-slate-400"
           />
         </div>
 
-        <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 hide-scrollbar">
+        <div className="flex gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 hide-scrollbar">
           {FILTERS.map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={cn(
-                'rounded-full px-4 py-1.5 text-sm font-semibold transition-all whitespace-nowrap',
+                'rounded-full px-4 py-1.5 text-xs font-bold transition-all duration-150 whitespace-nowrap cursor-pointer',
                 filter === f
-                  ? 'bg-civic-primary text-white shadow-sm'
-                  : 'bg-brand-50 text-brand-500 hover:bg-brand-100'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
               )}
             >
               {f}
@@ -99,16 +112,18 @@ const MyReports = () => {
 
       {filtered.length === 0 ? (
         <motion.div variants={itemVariants}>
-          <Card className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="h-16 w-16 rounded-full bg-brand-50 flex items-center justify-center text-brand-300 mb-4">
+          <Card className="flex flex-col items-center justify-center py-16 text-center border-dashed border-slate-300">
+            <div className="h-16 w-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-4">
               <Inbox size={32} />
             </div>
-            <h3 className="text-xl font-bold text-civic-text mb-2">No reports found</h3>
-            <p className="text-civic-muted mb-6 max-w-sm text-sm">
+            <h3 className="text-xl font-bold text-slate-900 mb-1">No reports found</h3>
+            <p className="text-slate-500 mb-6 max-w-sm text-sm">
               {searchQuery ? "Try adjusting your search query or filters." : "You haven't reported any civic issues yet."}
             </p>
-            <Link to="/report" className="text-sm font-semibold text-civic-primary hover:underline">
-              Submit a new report
+            <Link to="/report">
+              <Button variant="outline" className="font-bold">
+                Submit a new report
+              </Button>
             </Link>
           </Card>
         </motion.div>
@@ -117,62 +132,49 @@ const MyReports = () => {
           {filtered.map((issue) => (
             <motion.div key={issue.id} variants={itemVariants}>
               <Link to={`/issue/${issue.id}`}>
-                <Card noPadding className="flex items-center gap-4 p-4 hover:border-civic-primary hover:shadow-md transition-all group h-full">
-                  <div className="h-full w-28 shrink-0 rounded-l-lg overflow-hidden bg-brand-50 border-r border-brand-100 flex items-center justify-center">
+                <Card noPadding className="flex items-center gap-4 p-4 hover:border-slate-300 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition-all duration-200 group h-full bg-white border-slate-200/80">
+                  <div className="h-28 w-28 shrink-0 rounded-xl overflow-hidden bg-slate-100 border border-slate-100 flex items-center justify-center relative">
                     {issue.photos[0] ? (
-                      <img src={issue.photos[0]} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                      <img src={issue.photos[0]} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200" />
                     ) : (
-                      <MapPin className="text-brand-300" size={24} />
+                      <MapPin className="text-slate-400" size={24} />
                     )}
                   </div>
-                  <div className="min-w-0 flex-1 py-3 pr-3">
-                    <div className="flex items-center justify-between mb-1">
+                  <div className="min-w-0 flex-1 pr-2">
+                    <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-brand-500 uppercase tracking-wider">{issue.id}</span>
-                        <Badge variant={getStatusVariant(issue.status)} className="text-[10px] px-1.5 py-0">
+                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">{issue.category}</span>
+                        <Badge variant={getStatusVariant(issue.status)} className="text-[9.5px] px-1.5 py-0 uppercase font-bold">
                           {issue.status.replace('_', ' ')}
                         </Badge>
                       </div>
-                      <span className="text-[10px] text-civic-muted flex items-center gap-1">
-                        <Clock size={10} /> {new Date(issue.createdAt).toLocaleDateString()}
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <Clock size={10} /> {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                     
-                    <p className="truncate font-semibold text-civic-text text-sm mb-1">{issue.title}</p>
+                    <h4 className="truncate font-bold text-slate-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
+                      {issue.title}
+                    </h4>
                     
-                    <div className="flex items-center gap-1 text-xs text-civic-muted mb-2">
-                      <MapPin size={12} className="flex-shrink-0" />
+                    <div className="flex items-center gap-1 text-xs text-slate-500 mb-2.5">
+                      <MapPin size={11} className="text-blue-600 shrink-0" />
                       <span className="truncate">{issue.location.address}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 mb-2">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] uppercase font-bold text-civic-muted tracking-wider">Category</span>
-                        <span className="text-xs font-semibold text-civic-text">{issue.category}</span>
+                    <div className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-400 font-medium">Priority:</span>
+                        <PriorityBadge priority={issue.priority || issue.citizenUrgency} score={issue.priorityScore} size="sm" />
                       </div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] uppercase font-bold text-civic-muted tracking-wider">Department</span>
-                        <span className="text-xs font-semibold text-civic-primary truncate">{issue.assignedDepartmentId || 'Pending Routing'}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 p-2 bg-brand-50 rounded-md">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] uppercase font-bold text-civic-muted tracking-wider">Priority / Urgency</span>
-                        <div className="flex items-center gap-1 text-xs font-semibold">
-                          <span className={cn(issue.priorityScore > 75 ? "text-civic-danger" : "text-civic-warning")}>{issue.priorityScore}/100</span>
-                          <span className="text-civic-muted">•</span>
-                          <span className={cn(issue.citizenUrgency === 'URGENT' ? "text-civic-danger" : "text-civic-text")}>{issue.citizenUrgency || 'MEDIUM'}</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] uppercase font-bold text-civic-muted tracking-wider">Est. Resolution</span>
-                        <span className="text-xs font-bold text-civic-text">{issue.estimatedResolutionTime || '2-5 days'}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-400">SLA:</span>
+                        <span className="font-bold text-slate-700">{issue.estimatedResolutionTime || '2-5 days'}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="px-3">
-                    <ArrowRight className="text-brand-300 group-hover:text-civic-primary transition-colors" size={20} />
+                  <div className="pr-2">
+                    <ArrowRight className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all duration-150" size={18} />
                   </div>
                 </Card>
               </Link>

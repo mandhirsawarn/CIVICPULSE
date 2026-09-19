@@ -1,28 +1,37 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Users, MapPin, ThumbsUp, ThumbsDown, MessageSquare, Map as MapIcon, List, Filter, Flame, ChevronDown } from 'lucide-react';
+import { Users, MapPin, Map as MapIcon, List, Info, Sparkles, SlidersHorizontal } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
-import { Badge } from '../../components/ui/Badge';
+import { ReportCard, getCategoryEmoji } from '../../components/ui/ReportCard';
 import { cn } from '../../utils/cn';
 import { Link } from 'react-router-dom';
-import { Map, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
-const getCategoryIcon = (category: string) => {
-  switch (category) {
-    case 'Pothole':
-    case 'Road Damage': return '🛣️';
-    case 'Garbage': return '🗑️';
-    case 'Streetlight': return '💡';
-    case 'Water Leakage': return '💧';
-    case 'Waterlogging': return '🌧️';
-    case 'Drainage': return '🌊';
-    case 'Traffic': return '🚦';
-    default: return '🚧';
-  }
-};
+const FILTER_TABS = [
+  'All',
+  'Nearby',
+  'Most Supported',
+  'Newest',
+  'High Priority',
+  'In Progress',
+  'Resolved'
+] as const;
+
+type FilterTab = typeof FILTER_TABS[number];
+
+const CATEGORIES = [
+  'All',
+  'Pothole',
+  'Garbage',
+  'Streetlight',
+  'Waterlogging',
+  'Road Damage',
+  'Public Safety'
+];
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -32,222 +41,242 @@ const getStatusColor = (status: string) => {
   }
 };
 
+const createCustomIcon = (color: string) => {
+  return new L.DivIcon({
+    className: 'custom-div-icon',
+    html: `<div style="background-color: ${color}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  });
+};
+
 const CommunityPulse = () => {
   const { issues, voteIssue, currentUser } = useStore();
   const [viewMode, setViewMode] = useState<'feed' | 'map'>('feed');
+  const [activeTab, setActiveTab] = useState<FilterTab>('All');
   const [activeCategory, setActiveCategory] = useState('All');
-  const [sortBy, setSortBy] = useState<'Most Supported' | 'Newest'>('Most Supported');
 
   const userId = currentUser?.id || 'demo-user-1';
-
-  // For the prototype, we mock the user's locality based on a known good location
-  // Let's assume the user is around Chandigarh University / Kharar
   const mockLocality = "Chandigarh University / Kharar";
 
-  // In a real app, we'd filter issues by distance to user's home/current location.
-  // For demo, we just use all issues (since they're seeded locally anyway).
-  
+  // Filter issues based on active tab and category
   const filteredIssues = issues.filter(issue => {
-    if (activeCategory !== 'All' && issue.category !== activeCategory) return false;
-    return true;
+    // Category filter
+    if (activeCategory !== 'All' && issue.category !== activeCategory) {
+      return false;
+    }
+
+    // Status/Criteria filter tab
+    switch (activeTab) {
+      case 'High Priority':
+        return issue.priority === 'HIGH' || issue.priority === 'CRITICAL' || (issue.priorityScore || 0) >= 70;
+      case 'In Progress':
+        return issue.status === 'IN_PROGRESS' || issue.status === 'ASSIGNED';
+      case 'Resolved':
+        return issue.status === 'RESOLVED' || issue.status === 'CITIZEN_VERIFIED';
+      case 'Nearby':
+      case 'All':
+      case 'Most Supported':
+      case 'Newest':
+      default:
+        return true;
+    }
   });
 
+  // Sort issues
   const sortedIssues = [...filteredIssues].sort((a, b) => {
-    if (sortBy === 'Most Supported') {
+    if (activeTab === 'Most Supported') {
       const scoreA = (a.upvotes || 0) - (a.downvotes || 0);
       const scoreB = (b.upvotes || 0) - (b.downvotes || 0);
       return scoreB - scoreA;
     }
+    if (activeTab === 'Newest') {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+    if (activeTab === 'High Priority') {
+      return (b.priorityScore || 0) - (a.priorityScore || 0);
+    }
+    // Default: Sort by activity / recency
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
-  const categories = ['All', 'Roads', 'Garbage', 'Streetlights', 'Water', 'Drainage'];
+  const handleVote = (issueId: string, type: 'up' | 'down') => {
+    const currentVote = issues.find(i => i.id === issueId)?.userVotes?.[userId];
+    if (currentVote === type) {
+      voteIssue(issueId, null); // Cancel vote if clicked again
+    } else {
+      voteIssue(issueId, type);
+    }
+  };
 
   return (
-    <div className="max-w-5xl mx-auto py-4 md:py-8 space-y-6">
+    <div className="max-w-5xl mx-auto py-4 md:py-8 space-y-6 animate-fade-in">
+      {/* Header */}
       <PageHeader 
         title="Community Pulse" 
-        description="See what people in your area are reporting and help highlight issues that affect your community." 
+        description="Explore civic issues reported across your community, support reports with upvotes, and confirm fixes." 
         action={
-          <div className="flex items-center gap-2 bg-brand-50 text-civic-primary px-4 py-2 rounded-lg border border-brand-200">
-            <MapPin size={18} />
-            <span className="font-semibold text-sm">📍 {mockLocality}</span>
+          <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-xl border border-blue-200/60 shadow-2xs">
+            <MapPin size={16} />
+            <span className="font-bold text-xs sm:text-sm">📍 {mockLocality}</span>
           </div>
         }
       />
 
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-brand-200">
-        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar w-full sm:w-auto">
-          {categories.map(cat => {
-            const mappedCat = cat === 'Roads' ? 'Pothole' : cat === 'Streetlights' ? 'Streetlight' : cat === 'Water' ? 'Water Leakage' : cat;
-            return (
+      {/* Filter and Control Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] space-y-3">
+        {/* Main Filter Tabs */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar pb-1 sm:pb-0">
+            {FILTER_TABS.map(tab => (
               <button
-                key={cat}
-                onClick={() => setActiveCategory(cat === 'All' ? 'All' : mappedCat)}
+                key={tab}
+                onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap",
-                  (activeCategory === (cat === 'All' ? 'All' : mappedCat))
-                    ? "bg-civic-primary text-white shadow-md"
-                    : "bg-brand-50 text-civic-text hover:bg-brand-100"
+                  "px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-150 whitespace-nowrap cursor-pointer",
+                  activeTab === tab 
+                    ? "bg-slate-900 text-white shadow-xs" 
+                    : "bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
                 )}
               >
-                {cat}
+                {tab}
               </button>
-            )
-          })}
-        </div>
-        
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-          <div className="relative">
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="appearance-none bg-brand-50 border border-brand-200 text-civic-text text-sm rounded-lg pl-4 pr-10 py-2 focus:outline-none focus:ring-2 focus:ring-civic-primary font-medium"
-            >
-              <option value="Most Supported">Most Supported</option>
-              <option value="Newest">Newest</option>
-            </select>
-            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-civic-muted pointer-events-none" />
+            ))}
           </div>
 
-          <div className="flex bg-brand-50 rounded-lg p-1 border border-brand-200">
+          {/* View Mode Toggle: Feed vs Map */}
+          <div className="flex bg-slate-100 rounded-xl p-1 border border-slate-200/60 shrink-0">
             <button
               onClick={() => setViewMode('feed')}
-              className={cn("p-1.5 rounded-md transition-colors", viewMode === 'feed' ? "bg-white text-civic-primary shadow-sm" : "text-civic-muted hover:text-civic-text")}
+              className={cn(
+                "flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-150 cursor-pointer",
+                viewMode === 'feed' ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-900"
+              )}
             >
-              <List size={18} />
+              <List size={14} /> Feed
             </button>
             <button
               onClick={() => setViewMode('map')}
-              className={cn("p-1.5 rounded-md transition-colors", viewMode === 'map' ? "bg-white text-civic-primary shadow-sm" : "text-civic-muted hover:text-civic-text")}
+              className={cn(
+                "flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-150 cursor-pointer",
+                viewMode === 'map' ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-900"
+              )}
             >
-              <MapIcon size={18} />
+              <MapIcon size={14} /> Map
             </button>
           </div>
         </div>
+
+        {/* Categories Bar */}
+        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 overflow-x-auto hide-scrollbar">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 shrink-0">
+            <SlidersHorizontal size={12} /> Category:
+          </span>
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={cn(
+                "px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap cursor-pointer",
+                activeCategory === cat 
+                  ? "bg-blue-50 text-blue-700 font-bold border border-blue-200/60" 
+                  : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+              )}
+            >
+              {cat !== 'All' && <span className="mr-1">{getCategoryEmoji(cat)}</span>}
+              {cat}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* Community Signal Notice */}
+      <div className="bg-blue-50/50 border border-blue-200/50 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-slate-600">
+        <div className="flex items-center gap-2">
+          <Info size={15} className="text-blue-600 shrink-0" />
+          <span>
+            <strong>Community Impact Signal:</strong> Community support is an active factor in authority escalation and SLA dispatch.
+          </span>
+        </div>
+        <span className="text-[11px] font-semibold hidden sm:inline text-blue-700">
+          Showing {sortedIssues.length} reports
+        </span>
+      </div>
+
+      {/* Main Content Area */}
       {sortedIssues.length === 0 ? (
         <Card className="text-center py-16">
-          <div className="w-16 h-16 bg-brand-50 text-civic-primary rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
             <Users size={32} />
           </div>
-          <h3 className="text-xl font-bold text-civic-text mb-2">No community issues reported yet.</h3>
-          <p className="text-civic-muted mb-6">Be the first person to report a civic issue in your area.</p>
+          <h3 className="text-lg font-bold text-slate-900 mb-2">No matching community issues found</h3>
+          <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
+            Try choosing another category or filter tab, or report a new civic issue in your area.
+          </p>
           <Link to="/report">
-            <Button>Report an Issue</Button>
+            <Button className="font-bold">Report an Issue</Button>
           </Link>
         </Card>
       ) : viewMode === 'feed' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {sortedIssues.map(issue => {
-            const upvotes = issue.upvotes || 0;
-            const downvotes = issue.downvotes || 0;
-            const score = upvotes - downvotes;
-            const totalVotes = upvotes + downvotes;
-            const supportPercent = totalVotes > 0 ? Math.round((upvotes / totalVotes) * 100) : 0;
-            const userVote = issue.userVotes?.[userId];
-            
-            // Generate a non-exact locality string
-            const localityMatch = issue.location.address.match(/Sector \d+|Phase \d+|[A-Z][a-z]+ Nagar|[A-Z][a-z]+ Colony|[A-Z][a-z]+ Enclave/i);
-            const locality = localityMatch ? localityMatch[0] : issue.location.ward || 'Local Area';
-
-            return (
-              <Card key={issue.id} className="flex flex-col hover:border-civic-primary/30 transition-colors">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl" title={issue.category}>{getCategoryIcon(issue.category)}</span>
-                    <div>
-                      <h3 className="font-bold text-civic-text leading-tight">{issue.title}</h3>
-                      <p className="text-xs text-civic-muted flex items-center gap-1 mt-1">
-                        <MapPin size={12} /> {locality} • {new Date(issue.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant={issue.status === 'RESOLVED' ? 'success' : issue.status === 'IN_PROGRESS' ? 'warning' : 'outline'} className="text-[10px]">
-                    {issue.status.replace('_', ' ')}
-                  </Badge>
-                </div>
-                
-                <p className="text-sm text-civic-muted line-clamp-2 mb-4 flex-1">
-                  {issue.description}
-                </p>
-                
-                <div className="flex items-center justify-between pt-4 border-t border-brand-100">
-                  <div className="flex items-center gap-1 bg-brand-50 rounded-full p-1 border border-brand-200">
-                    <button 
-                      onClick={() => voteIssue(issue.id, userVote === 'up' ? null : 'up')}
-                      className={cn("flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors", userVote === 'up' ? "bg-civic-primary text-white" : "hover:bg-brand-100 text-civic-text")}
-                    >
-                      <ThumbsUp size={14} className={userVote === 'up' ? "fill-white" : ""} /> {upvotes}
-                    </button>
-                    <div className="w-px h-4 bg-brand-200"></div>
-                    <button 
-                      onClick={() => voteIssue(issue.id, userVote === 'down' ? null : 'down')}
-                      className={cn("flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors", userVote === 'down' ? "bg-civic-danger text-white" : "hover:bg-brand-100 text-civic-text")}
-                    >
-                      <ThumbsDown size={14} className={userVote === 'down' ? "fill-white" : ""} /> {downvotes}
-                    </button>
-                  </div>
-                  
-                  <div className="flex items-center gap-3">
-                    {score >= 10 && (
-                      <div className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-brand-500 uppercase tracking-wider bg-brand-100 px-2 py-1 rounded-md">
-                        <Flame size={12} className="text-brand-500" />
-                        {supportPercent}% Support
-                      </div>
-                    )}
-                    <Link to={`/issue/${issue.id}`}>
-                      <Button variant="outline" size="sm" className="text-xs h-8">View Details</Button>
-                    </Link>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {sortedIssues.map(issue => (
+            <ReportCard 
+              key={issue.id} 
+              issue={issue} 
+              currentUserId={userId}
+              onVote={handleVote}
+              showImage={true}
+            />
+          ))}
         </div>
       ) : (
-        <div className="h-[600px] bg-white rounded-xl shadow-sm border border-brand-200 overflow-hidden relative">
-          <Map 
-            defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
-            defaultZoom={12} 
-            mapId="civicpulse_community_pulse_map"
-            mapTypeControl={true}
-            streetViewControl={true}
-            fullscreenControl={true}
-            zoomControl={true}
+        <div className="h-[600px] bg-white rounded-2xl shadow-sm border border-brand-200 overflow-hidden relative">
+          <MapContainer 
+            center={[30.7333, 76.7794]} 
+            zoom={13} 
+            maxZoom={19}
+            style={{ height: '100%', width: '100%' }}
           >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
             {sortedIssues.map(issue => (
-              <AdvancedMarker 
+              <Marker 
                 key={issue.id} 
-                position={{ lat: issue.location.lat, lng: issue.location.lng }}
+                position={[issue.location.lat, issue.location.lng]}
+                icon={createCustomIcon(getStatusColor(issue.status))}
               >
-                <div className="p-3 min-w-[220px] bg-white rounded-xl shadow-lg border border-brand-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">{getCategoryIcon(issue.category)}</span>
-                    <h4 className="font-bold text-sm text-civic-text">{issue.title}</h4>
+                <Popup className="rounded-xl overflow-hidden border-0 shadow-lg p-0">
+                  <div className="p-3 min-w-[220px]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">{getCategoryEmoji(issue.category)}</span>
+                      <h4 className="font-bold text-sm text-civic-text leading-tight">{issue.title}</h4>
+                    </div>
+                    <div className="flex justify-between items-center text-xs mb-3 border-y border-brand-100 py-2">
+                      <div>
+                        <span className="text-civic-muted font-semibold block">Score</span>
+                        <span className="font-bold text-civic-primary">{(issue.upvotes || 0) - (issue.downvotes || 0)}</span>
+                      </div>
+                      <div>
+                        <span className="text-civic-muted font-semibold block">Upvotes</span>
+                        <span className="font-bold text-brand-600">{issue.upvotes || 0}</span>
+                      </div>
+                      <div>
+                        <span className="text-civic-muted font-semibold block">Status</span>
+                        <span className={cn("font-bold text-[11px]", issue.status === 'RESOLVED' ? "text-green-600" : "text-amber-600")}>
+                          {issue.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                    </div>
+                    <Link to={`/issue/${issue.id}`} className="block w-full">
+                      <Button size="sm" className="w-full text-xs font-bold">View Report Details</Button>
+                    </Link>
                   </div>
-                  <div className="flex justify-between items-center text-xs mb-3 border-y border-brand-100 py-2">
-                    <div>
-                      <span className="text-civic-muted font-semibold block">Score</span>
-                      <span className="font-bold text-civic-primary">{(issue.upvotes || 0) - (issue.downvotes || 0)}</span>
-                    </div>
-                    <div>
-                      <span className="text-civic-muted font-semibold block">Upvotes</span>
-                      <span className="font-bold text-brand-500">{issue.upvotes || 0}</span>
-                    </div>
-                    <div>
-                      <span className="text-civic-muted font-semibold block">Status</span>
-                      <span className={cn("font-bold", issue.status === 'RESOLVED' ? "text-green-500" : "text-amber-500")}>{issue.status.replace('_', ' ')}</span>
-                    </div>
-                  </div>
-                  <Link to={`/issue/${issue.id}`} className="block w-full">
-                    <Button size="sm" className="w-full">View Community Discussion</Button>
-                  </Link>
-                </div>
-              </AdvancedMarker>
+                </Popup>
+              </Marker>
             ))}
-          </Map>
+          </MapContainer>
         </div>
       )}
     </div>

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ChevronLeft, MapPin, Clock, ShieldAlert, CheckCircle2, XCircle, ArrowRight, Camera, User, Check, ThumbsUp, ThumbsDown, Users, Flame, MessageSquare, Send } from 'lucide-react';
+import { ChevronLeft, MapPin, Clock, ShieldAlert, CheckCircle2, XCircle, Camera, Check, ThumbsUp, ThumbsDown, Users, Flame, MessageSquare, Send, Sparkles, Building2 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { PriorityBadge } from '../../components/ui/PriorityBadge';
 import { Timeline } from '../../components/ui/Timeline';
+import { getCategoryEmoji, getStatusVariant } from '../../components/ui/ReportCard';
 
 const IssueDetails = () => {
   const { id } = useParams();
@@ -14,163 +16,298 @@ const IssueDetails = () => {
   const issue = issues.find(i => i.id === id);
 
   const [hasVerified, setHasVerified] = useState(false);
+  const [recheckMessage, setRecheckMessage] = useState('');
   const [commentText, setCommentText] = useState('');
   const userId = currentUser?.id || 'demo-user-1';
 
   if (!issue) return (
-    <div className="flex flex-col items-center justify-center py-20 text-civic-muted">
-      <ShieldAlert size={48} className="mb-4 text-brand-300" />
-      <h2 className="text-xl font-semibold text-civic-text mb-2">Issue not found</h2>
-      <Link to="/"><Button variant="outline">Return to Dashboard</Button></Link>
+    <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+      <ShieldAlert size={48} className="mb-4 text-slate-300" />
+      <h2 className="text-xl font-bold text-slate-900 mb-2">Issue not found</h2>
+      <Link to="/"><Button variant="outline" className="rounded-xl">Return to Dashboard</Button></Link>
     </div>
   );
 
   const isResolved = issue.status === 'RESOLVED';
   const isCitizenVerified = issue.status === 'CITIZEN_VERIFIED';
+  const hasRecheck = (issue.communityRecheckRequests || 0) > 0;
 
   const handleVerify = (isFixed: boolean) => {
     if (isFixed) {
       updateIssueStatus(issue.id, 'CITIZEN_VERIFIED');
+      setRecheckMessage('');
     } else {
       updateIssueStatus(issue.id, 'IN_PROGRESS');
       requestCommunityRecheck(issue.id);
+      setRecheckMessage('Community feedback received — Re-review in progress');
     }
     setHasVerified(true);
   };
 
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case 'REPORTED': return 'outline';
-      case 'AI_VERIFIED': return 'info';
-      case 'ASSIGNED': return 'info';
-      case 'IN_PROGRESS': return 'warning';
-      case 'RESOLVED': return 'success';
-      case 'CITIZEN_VERIFIED': return 'success';
-      default: return 'default';
-    }
-  };
+  const upvotes = issue.upvotes || 0;
+  const downvotes = issue.downvotes || 0;
+  const totalVotes = upvotes + downvotes;
+  const supportPercent = totalVotes > 0 ? Math.round((upvotes / totalVotes) * 100) : 0;
+  const userVote = issue.userVotes?.[userId];
 
   return (
-    <div className="max-w-4xl mx-auto py-4 md:py-8 animate-fade-in">
-      <Link to="/my-reports" className="inline-flex items-center text-sm font-medium text-civic-muted mb-6 hover:text-civic-primary transition-colors">
-        <ChevronLeft size={16} className="mr-1" /> Back to My Reports
-      </Link>
+    <div className="max-w-6xl mx-auto py-4 md:py-6 animate-fade-in space-y-6 pb-12">
+      {/* Navigation Header */}
+      <div className="flex items-center justify-between">
+        <Link to="/my-reports" className="inline-flex items-center text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
+          <ChevronLeft size={16} className="mr-1" /> Back to My Reports
+        </Link>
+        <Link to="/community" className="text-xs font-bold text-blue-600 hover:underline">
+          View in Community Feed →
+        </Link>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* Main Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Main Content: Left Column */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-xs font-mono font-semibold text-brand-500 bg-brand-100 px-2 py-0.5 rounded">{issue.id}</span>
-                <Badge variant={getStatusVariant(issue.status)}>{issue.status.replace('_', ' ')}</Badge>
+          
+          {/* Section 1: Report Overview Header */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-2.5 py-1 rounded-lg">
+                  {issue.id}
+                </span>
+                <Badge variant={getStatusVariant(issue.status)} className="text-[11px] font-bold uppercase tracking-wider">
+                  {issue.status.replace('_', ' ')}
+                </Badge>
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-civic-text">{issue.title}</h1>
+              <div className="flex items-center gap-2">
+                <PriorityBadge priority={issue.priority || issue.citizenUrgency} score={issue.priorityScore} size="md" />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3.5 pt-1">
+              <span className="text-3xl mt-0.5" title={issue.category}>{getCategoryEmoji(issue.category)}</span>
+              <div>
+                <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 leading-tight">{issue.title}</h1>
+                <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-1.5 font-medium">
+                  <Clock size={13} className="text-slate-400" /> Reported on {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </p>
+              </div>
             </div>
           </div>
 
-          {issue.photos[0] && (
-            <div className="rounded-xl overflow-hidden border border-brand-200 bg-brand-50 aspect-video relative">
-              <img src={issue.photos[0]} alt="Issue Evidence" className="w-full h-full object-cover" />
-            </div>
-          )}
-          
-          {!issue.photos[0] && (
-            <div className="rounded-xl border-2 border-dashed border-brand-200 bg-brand-50 aspect-video flex flex-col items-center justify-center text-brand-400">
-              <Camera size={32} className="mb-2" />
-              <span className="text-sm font-medium">No photo provided</span>
-            </div>
-          )}
-
-          <Card className="flex flex-col gap-4">
-            <div className="flex items-start gap-3">
-              <MapPin size={20} className="text-civic-primary flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-semibold text-civic-text mb-1">Location</h3>
-                <p className="text-sm text-civic-muted">{issue.location.address}</p>
-                <p className="text-xs text-brand-500 mt-1">{issue.location.ward}, {issue.location.zone} Zone</p>
+          {/* Section 2: Issue Evidence Photo */}
+          <div className="space-y-2">
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Incident Photo Evidence</h3>
+            {issue.photos[0] ? (
+              <div className="rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-100 aspect-video relative shadow-xs">
+                <img src={issue.photos[0]} alt="Issue Evidence" className="w-full h-full object-cover" />
               </div>
-            </div>
-            
-            {issue.description && (
-              <div className="pt-4 border-t border-brand-100">
-                <h3 className="text-sm font-semibold text-civic-text mb-2">Description</h3>
-                <p className="text-sm text-civic-muted">{issue.description}</p>
+            ) : (
+              <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 aspect-video flex flex-col items-center justify-center text-slate-400">
+                <Camera size={32} className="mb-2 opacity-60" />
+                <span className="text-xs font-semibold">No photo evidence provided with this report</span>
               </div>
             )}
+          </div>
+
+          {/* Section 3: Description & Location Details */}
+          <Card className="p-6 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col gap-4">
+            {issue.description && (
+              <div>
+                <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Description</h3>
+                <p className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 font-normal">
+                  {issue.description}
+                </p>
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-100 flex items-start gap-3">
+              <MapPin size={20} className="text-blue-600 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Incident Location</h3>
+                <p className="text-sm font-bold text-slate-900">{issue.location.address}</p>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1 font-mono">
+                  <span className="font-semibold text-slate-700">{issue.location.ward}</span>
+                  <span>•</span>
+                  <span>{issue.location.zone} Zone</span>
+                  <span>•</span>
+                  <span>Lat: {issue.location.lat.toFixed(5)}, Lng: {issue.location.lng.toFixed(5)}</span>
+                </div>
+              </div>
+            </div>
           </Card>
 
+          {/* Section 4: Resolution Evidence & Community Verification */}
+          {(isResolved || isCitizenVerified || hasRecheck) && (
+            <Card className="p-6 rounded-2xl border border-blue-200/80 shadow-md bg-gradient-to-br from-white to-blue-50/20 relative overflow-hidden">
+              <div className="border-b border-slate-100 pb-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                    <CheckCircle2 size={18} className="text-emerald-600" /> Resolution Evidence & Verification
+                  </h3>
+                  <Badge variant={isCitizenVerified ? 'success' : isResolved ? 'info' : 'warning'} className="text-xs font-semibold">
+                    {isCitizenVerified ? 'Citizen Confirmed' : isResolved ? 'Awaiting Citizen Verification' : 'Re-review in progress'}
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Compare the reported issue with the resolution proof submitted by municipal ground workers.
+                </p>
+              </div>
 
-          {/* Community Support Block */}
-          <Card className="flex flex-col gap-4 border-civic-primary/20">
-            <h3 className="text-sm font-semibold text-civic-text border-b border-brand-100 pb-2 flex items-center gap-2">
-              <Users size={16} className="text-civic-primary" />
-              Community Support
-            </h3>
-            
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1 bg-brand-50 rounded-full p-1 border border-brand-200">
-                  <button 
-                    onClick={() => voteIssue(issue.id, issue.userVotes?.[userId] === 'up' ? null : 'up')}
-                    className={cn("flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold transition-colors", issue.userVotes?.[userId] === 'up' ? "bg-civic-primary text-white" : "hover:bg-brand-100 text-civic-text")}
-                  >
-                    <ThumbsUp size={16} className={issue.userVotes?.[userId] === 'up' ? "fill-white" : ""} /> {issue.upvotes || 0}
-                  </button>
-                  <div className="w-px h-6 bg-brand-200"></div>
-                  <button 
-                    onClick={() => voteIssue(issue.id, issue.userVotes?.[userId] === 'down' ? null : 'down')}
-                    className={cn("flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold transition-colors", issue.userVotes?.[userId] === 'down' ? "bg-civic-danger text-white" : "hover:bg-brand-100 text-civic-text")}
-                  >
-                    <ThumbsDown size={16} className={issue.userVotes?.[userId] === 'down' ? "fill-white" : ""} /> {issue.downvotes || 0}
-                  </button>
+              {/* Before and After Side-by-Side Comparison */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Before (Reported)</span>
+                  <div className="h-40 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden relative">
+                    {issue.photos[0] ? (
+                      <img src={issue.photos[0]} alt="Before" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
+                        <Camera size={20} className="mr-1 opacity-60" /> Initial photo
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
-                {((issue.upvotes || 0) - (issue.downvotes || 0)) >= 10 && (
-                  <div className="flex items-center gap-1 text-xs font-bold text-brand-500 uppercase tracking-wider bg-brand-100 px-3 py-1.5 rounded-lg">
-                    <Flame size={14} className="text-brand-500" />
-                    {Math.round(((issue.upvotes || 0) / ((issue.upvotes || 0) + (issue.downvotes || 0))) * 100)}% Support
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block flex items-center gap-1.5">
+                    <CheckCircle2 size={14} /> After (Resolution Evidence)
+                  </span>
+                  <div className="h-40 rounded-xl bg-slate-100 border border-emerald-300/80 overflow-hidden relative">
+                    {issue.resolutionEvidence?.[0] ? (
+                      <img src={issue.resolutionEvidence[0]} alt="After" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-emerald-50/50 text-slate-500 text-xs p-3 text-center">
+                        <CheckCircle2 size={24} className="text-emerald-600 mb-1" />
+                        <span className="font-semibold text-slate-700">Work marked completed by department technician</span>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+              </div>
+
+              {/* Explicit Verification Actions */}
+              {!isCitizenVerified && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
+                  <h4 className="text-sm font-bold text-slate-900">Is this issue actually resolved on ground?</h4>
+                  <p className="text-xs text-slate-500">
+                    Your verification ensures municipal accountability and maintains high civic data integrity.
+                  </p>
+                  
+                  <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                    <Button 
+                      onClick={() => handleVerify(true)} 
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-xs"
+                    >
+                      <CheckCircle2 size={18} className="mr-2" /> Looks Resolved
+                    </Button>
+                    <Button 
+                      onClick={() => handleVerify(false)} 
+                      variant="outline"
+                      className="flex-1 border-rose-200 text-rose-600 hover:bg-rose-50 font-bold h-11 rounded-xl"
+                    >
+                      <XCircle size={18} className="mr-2" /> Still a Problem
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Re-review Feedback Notice */}
+              {(recheckMessage || hasRecheck) && (
+                <div className="mt-3 p-3 bg-amber-50 border border-amber-300/80 rounded-xl text-amber-900 text-xs font-semibold flex items-center gap-2">
+                  <ShieldAlert size={16} className="text-amber-600 shrink-0" />
+                  <span>
+                    Community feedback received — Re-review in progress ({issue.communityRecheckRequests || 1} citizen recheck requests)
+                  </span>
+                </div>
+              )}
+
+              {isCitizenVerified && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                  <Check size={16} className="text-emerald-600 shrink-0" />
+                  <span>Resolution successfully verified by citizens on ground. Thank you!</span>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Section 5: Community Support & Voting Block */}
+          <Card className="p-5 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Users size={16} className="text-blue-600" />
+                Community Support
+              </h3>
+              {totalVotes > 0 && (
+                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200/80 flex items-center gap-1">
+                  <Flame size={13} className="text-amber-500" /> {supportPercent}% Support ({totalVotes} votes)
+                </span>
+              )}
+            </div>
+            
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 bg-slate-100/70 rounded-full p-1 border border-slate-200/80">
+                  <button 
+                    onClick={() => voteIssue(issue.id, userVote === 'up' ? null : 'up')}
+                    className={cn(
+                      "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all", 
+                      userVote === 'up' ? "bg-slate-900 text-white shadow-xs" : "hover:bg-white text-slate-700"
+                    )}
+                    title={userVote === 'up' ? "Remove upvote" : "Upvote this report"}
+                  >
+                    <ThumbsUp size={14} className={userVote === 'up' ? "fill-white" : ""} /> Upvote ({upvotes})
+                  </button>
+                  <div className="w-px h-4 bg-slate-300" />
+                  <button 
+                    onClick={() => voteIssue(issue.id, userVote === 'down' ? null : 'down')}
+                    className={cn(
+                      "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all", 
+                      userVote === 'down' ? "bg-rose-600 text-white shadow-xs" : "hover:bg-white text-slate-700"
+                    )}
+                    title={userVote === 'down' ? "Remove downvote" : "Downvote / Not an issue"}
+                  >
+                    <ThumbsDown size={14} className={userVote === 'down' ? "fill-white" : ""} /> Downvote ({downvotes})
+                  </button>
+                </div>
               </div>
               
-              <p className="text-xs text-civic-muted sm:text-right max-w-xs">
-                Your vote helps CivicPulse understand which issues affect the community.
+              <p className="text-[11px] text-slate-500 sm:text-right max-w-xs font-medium">
+                Community validation signals local urgency to help prioritize municipal response.
               </p>
             </div>
           </Card>
 
-          {/* Community Comments Block */}
-          <Card className="flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-civic-text border-b border-brand-100 pb-2 flex items-center gap-2">
-              <MessageSquare size={16} className="text-civic-primary" />
+          {/* Section 6: Community Discussion */}
+          <Card className="p-5 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col gap-4">
+            <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+              <MessageSquare size={16} className="text-blue-600" />
               Community Discussion
             </h3>
             
-            <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
               {(!issue.communityComments || issue.communityComments.length === 0) ? (
-                <p className="text-sm text-civic-muted text-center py-4">No comments yet. Be the first to share your experience.</p>
+                <p className="text-xs text-slate-400 text-center py-6">No comments yet. Share ground updates or additional context for municipal teams.</p>
               ) : (
                 issue.communityComments.map(comment => (
-                  <div key={comment.id} className="bg-brand-50 rounded-lg p-3 border border-brand-100">
+                  <div key={comment.id} className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
                     <div className="flex justify-between items-start mb-1">
-                      <span className="font-semibold text-xs text-civic-text">{comment.author}</span>
-                      <span className="text-[10px] text-civic-muted">{new Date(comment.timestamp).toLocaleDateString()}</span>
+                      <span className="font-bold text-xs text-slate-900">{comment.author}</span>
+                      <span className="text-[10px] text-slate-400">{new Date(comment.timestamp).toLocaleDateString()}</span>
                     </div>
-                    <p className="text-sm text-civic-muted">{comment.text}</p>
+                    <p className="text-xs text-slate-600 leading-relaxed">{comment.text}</p>
                   </div>
                 ))
               )}
             </div>
             
-            <div className="flex gap-2 mt-2 pt-4 border-t border-brand-100">
+            <div className="flex gap-2 pt-2 border-t border-slate-100">
               <input 
                 type="text"
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Add a comment..."
-                className="flex-1 p-2 text-sm border border-brand-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-civic-primary"
+                placeholder="Add a community note or status update..."
+                className="flex-1 px-3.5 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && commentText.trim()) {
                     addCommunityComment(issue.id, commentText.trim());
@@ -186,141 +323,97 @@ const IssueDetails = () => {
                   }
                 }}
                 disabled={!commentText.trim()}
-                className="px-4"
+                className="px-4 text-xs font-bold rounded-xl bg-slate-900 text-white hover:bg-slate-800"
               >
-                <Send size={16} />
+                <Send size={13} className="mr-1.5" /> Post
               </Button>
             </div>
           </Card>
 
-
-          {/* Verification UI if Resolved */}
-          {isResolved && !hasVerified && !isCitizenVerified && (
-            <Card className="bg-civic-primary text-white border-none shadow-md overflow-hidden relative">
-              <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
-              
-              <h2 className="text-xl font-bold mb-2">Is this issue actually fixed?</h2>
-              <p className="text-brand-100 text-sm mb-6 max-w-lg">
-                The authority has marked this as resolved. Please verify the resolution to help us maintain accountability and earn civic points.
-              </p>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-brand-200 uppercase tracking-wider block">Before (Your Report)</span>
-                  <div className="h-32 rounded-lg bg-black/20 border border-white/20 overflow-hidden relative">
-                    {issue.photos[0] ? (
-                      <img src={issue.photos[0]} alt="Before" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center"><Camera size={24} className="text-brand-300" /></div>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-brand-200 uppercase tracking-wider block flex items-center gap-2">
-                    <CheckCircle2 size={14} className="text-civic-accent" /> After (Authority Evidence)
-                  </span>
-                  <div className="h-32 rounded-lg bg-black/20 border border-civic-accent/50 overflow-hidden relative">
-                    {issue.resolutionEvidence?.[0] ? (
-                      <img src={issue.resolutionEvidence[0]} alt="After" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-brand-300 text-sm font-medium">Image processing...</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button onClick={() => handleVerify(false)} className="flex-1 bg-white/10 text-white hover:bg-white/20 border border-white/20">
-                  <XCircle size={18} className="mr-2" /> No, still broken
-                </Button>
-                {(issue.communityRecheckRequests || 0) > 0 && (
-                  <div className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md border border-red-400">
-                    ⚠️ {issue.communityRecheckRequests} Recheck Requests
-                  </div>
-                )}
-              </div>
-            </Card>
-          )}
-
-          {isCitizenVerified && (
-            <Card className="bg-civic-accent/10 border-civic-accent/20 flex items-start gap-4">
-              <div className="bg-civic-accent text-white p-2 rounded-full mt-1">
-                <Check size={24} />
-              </div>
-              <div>
-                <h3 className="font-bold text-civic-text text-lg">Resolution Verified</h3>
-                <p className="text-sm text-civic-muted mt-1">
-                  Thank you for confirming the fix! You've earned 
-                  <span className="inline-block mx-1 font-bold text-civic-accent bg-civic-accent/10 px-2 py-0.5 rounded">
-                    +10 Civic Points
-                  </span>
-                </p>
-              </div>
-            </Card>
-          )}
         </div>
 
         {/* Sidebar: Right Column */}
         <div className="space-y-6">
-          <Card>
-            <h3 className="font-bold text-civic-text mb-4 uppercase tracking-wider text-sm border-b border-brand-100 pb-2 flex items-center gap-2">
-              <ShieldAlert size={16} className="text-civic-primary" />
-              Resolution Intelligence
-            </h3>
+          
+          {/* Section 7: AI Analysis & Priority Breakdown */}
+          <Card className="p-5 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)]">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 className="font-bold text-slate-900 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                <Sparkles size={15} className="text-blue-600" />
+                AI-Assisted Assessment
+              </h3>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+                Automated Engine
+              </span>
+            </div>
+
             {issue.aiAnalysis ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 pb-3 border-b border-brand-100">
+                <div className="grid grid-cols-2 gap-3 pb-3 border-b border-slate-100">
                   <div>
-                    <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Detected</span>
-                    <span className="font-medium text-sm text-civic-text">{issue.aiAnalysis.detectedCategory}</span>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Detected Category</span>
+                    <span className="font-bold text-xs text-slate-900">{issue.aiAnalysis.detectedCategory}</span>
                   </div>
                   <div>
-                    <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Severity</span>
-                    <Badge variant={issue.aiAnalysis.severity === 'HIGH' ? 'danger' : 'warning'} className="text-xs">
-                      {issue.aiAnalysis.severity}
-                    </Badge>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Priority Level</span>
+                    <PriorityBadge priority={issue.aiAnalysis.severity} score={issue.priorityScore} size="sm" />
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center pb-3 border-b border-brand-100">
-                  <span className="text-sm text-civic-muted font-bold">Priority Score</span>
-                  <span className="font-black text-civic-primary">{issue.priorityScore}/100</span>
+                <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                  <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Priority Score</span>
+                  <span className="font-black text-blue-600 text-lg tabular-nums">{issue.priorityScore}/100</span>
                 </div>
 
-                <div className="pb-3 border-b border-brand-100">
-                  <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Recommended Department</span>
-                  <span className="font-medium text-sm text-civic-text flex items-center gap-1">
-                    🏢 {issue.assignedDepartmentId || issue.aiAnalysis.suggestedDepartment}
-                  </span>
+                <div className="pb-3 border-b border-slate-100">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1.5">Priority Factor Reasoning</span>
+                  <div className="space-y-1.5">
+                    {issue.aiAnalysis.priorityReasoning?.map((reason, i) => (
+                      <div key={i} className="text-xs text-slate-700 flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                        <span className="font-semibold text-slate-800">{reason.factor}</span>
+                        <span className="text-blue-600 font-mono font-bold">+{reason.score} pts</span>
+                      </div>
+                    )) || (
+                      <p className="text-xs text-slate-500 italic">Calculated based on hazard severity, public density, and urgency.</p>
+                    )}
+                  </div>
                 </div>
 
-                <div className="pb-3 border-b border-brand-100">
-                  <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Estimated Resolution</span>
-                  <span className="font-bold text-sm text-civic-text bg-brand-50 px-2 py-1 rounded border border-brand-200">
-                    {issue.estimatedResolutionTime || '2-5 days'}
+                <div className="pb-3 border-b border-slate-100">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Assigned Department</span>
+                  <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                    <Building2 size={14} className="text-blue-600" />
+                    {issue.assignedDepartmentId || issue.aiAnalysis.suggestedDepartment}
                   </span>
                 </div>
 
                 <div>
-                  <span className="text-xs text-civic-muted uppercase tracking-wider block mb-1">Status</span>
-                  <span className="font-bold text-sm text-civic-primary">
-                    {issue.status === 'REPORTED' ? 'Pending AI Analysis' : 
-                     issue.status === 'AI_VERIFIED' ? 'Pending Routing' :
-                     issue.status === 'ASSIGNED' ? 'Reported to Department' :
-                     issue.status === 'IN_PROGRESS' ? 'Work in Progress' :
-                     issue.status === 'RESOLVED' ? 'Resolution Submitted' :
-                     issue.status === 'CITIZEN_VERIFIED' ? 'Resolved' : issue.status}
+                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Estimated SLA Window</span>
+                  <span className="font-bold text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 inline-block font-mono">
+                    ⏱️ {issue.estimatedResolutionTime || '2-5 days'}
                   </span>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-civic-muted">No AI assessment available for this issue.</p>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <span className="text-xs text-slate-500 font-bold">Priority Level</span>
+                  <PriorityBadge priority={issue.priority || issue.citizenUrgency} score={issue.priorityScore} size="sm" />
+                </div>
+                <div className="pb-2 border-b border-slate-100">
+                  <span className="text-xs text-slate-400 uppercase tracking-wider block mb-1">Assigned Department</span>
+                  <span className="text-xs font-semibold text-slate-800">🏛️ {issue.assignedDepartmentId || 'Municipal Works'}</span>
+                </div>
+                <p className="text-xs text-slate-400 italic">Automated assessment scheduled for routing.</p>
+              </div>
             )}
           </Card>
 
-          <Card>
-            <h3 className="font-bold text-civic-text mb-6">Activity Timeline</h3>
+          {/* Section 8: Status Timeline */}
+          <Card className="p-5 rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.03)]">
+            <h3 className="font-bold text-slate-900 mb-4 text-xs uppercase tracking-wider border-b border-slate-100 pb-2">
+              Status Timeline
+            </h3>
             <Timeline events={issue.timeline} />
           </Card>
         </div>

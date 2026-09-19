@@ -8,6 +8,8 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { PageHeader } from '../../components/ui/PageHeader';
 
+import { SectionHeader } from '../../components/ui/SectionHeader';
+
 const IssueIntelligence = () => {
   const { issues, departments, fieldTeams, assignTeam } = useStore();
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
@@ -33,82 +35,81 @@ const IssueIntelligence = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-100px)] flex flex-col relative animate-fade-in max-w-7xl mx-auto">
+    <div className="h-[calc(100vh-120px)] flex flex-col relative animate-fade-in max-w-7xl mx-auto">
       <div className="mb-6">
-        <PageHeader 
-          title="Issue Intelligence" 
-          description="AI-prioritized civic reports awaiting triage and dispatch." 
+        <SectionHeader 
+          eyebrow="AI TRIAGE & DISPATCH"
+          title="Issue Intelligence Queue" 
+          description="AI-prioritized civic reports awaiting departmental triage, verification, and field team dispatch." 
         />
       </div>
 
-      <Card className="flex-1 overflow-hidden flex flex-col p-0 border border-civic-border">
-        <div className="overflow-x-auto flex-1">
-          <table className="w-full text-left text-sm text-civic-text">
-            <thead className="text-xs uppercase bg-brand-50 text-civic-muted border-b border-brand-200">
+      <Card className="flex-1 overflow-hidden flex flex-col p-0 border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(15,23,42,0.03)] bg-white">
+        <div className="overflow-x-auto flex-1 custom-scrollbar">
+          <table className="w-full text-left text-sm text-slate-800">
+            <thead className="text-[11px] uppercase bg-slate-50 text-slate-500 border-b border-slate-200/80 tracking-wider font-bold">
               <tr>
-                <th className="px-6 py-4 font-semibold">Issue ID</th>
-                <th className="px-6 py-4 font-semibold">Category</th>
-                <th className="px-6 py-4 font-semibold">AI Priority</th>
-                <th className="px-6 py-4 font-semibold">Community Score</th>
-                <th className="px-6 py-4 font-semibold">Location</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
-                <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                <th className="px-6 py-3.5">Issue ID</th>
+                <th className="px-6 py-3.5">Category</th>
+                <th className="px-6 py-3.5">AI Priority</th>
+                <th className="px-6 py-3.5">Community Score</th>
+                <th className="px-6 py-3.5">Location</th>
+                <th className="px-6 py-3.5">Status</th>
+                <th className="px-6 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-brand-100">
+            <tbody className="divide-y divide-slate-100">
               {issues.map(issue => (
                 <tr 
                   key={issue.id} 
-                  className="hover:bg-brand-50 transition-colors cursor-pointer group"
+                  className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
                   onClick={() => setSelectedIssue(issue)}
                 >
-                  <td className="px-6 py-4 font-semibold text-civic-text">{issue.id}</td>
+                  <td className="px-6 py-4 font-mono font-bold text-xs text-slate-900">{issue.id}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{issue.category}</span>
+                      <span className="font-semibold text-xs text-slate-900">{issue.category}</span>
                       {issue.aiAnalysis?.possibleDuplicate && (
-                        <span className="bg-brand-200 text-brand-600 px-1.5 py-0.5 rounded text-[10px] font-bold" title="Possible Duplicate">
-                          POSSIBLE DUPLICATE
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200/60 px-1.5 py-0.5 rounded text-[10px] font-bold" title="Possible Duplicate">
+                          DUPLICATE
                         </span>
                       )}
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     {issue.aiAnalysis ? (
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2.5">
                         <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2",
-                          issue.aiAnalysis.priorityScore > 75 ? "text-civic-danger border-civic-danger/20 bg-civic-danger/5" : "text-civic-warning border-civic-warning/20 bg-civic-warning/5"
+                          "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border tabular-nums",
+                          issue.aiAnalysis.priorityScore > 75 ? "text-red-700 border-red-200 bg-red-50" : "text-amber-700 border-amber-200 bg-amber-50"
                         )}>
                           {issue.aiAnalysis.priorityScore}
                         </div>
-                        <div>
-                          <div className={cn("text-xs font-bold uppercase tracking-wider", issue.aiAnalysis.severity === 'HIGH' ? 'text-civic-danger' : 'text-civic-warning')}>
-                            {issue.aiAnalysis.severity}
-                          </div>
-                        </div>
+                        <span className={cn("text-[11px] font-bold uppercase tracking-wider", issue.aiAnalysis.severity === 'HIGH' || issue.aiAnalysis.severity === 'CRITICAL' ? 'text-red-700' : 'text-amber-700')}>
+                          {issue.aiAnalysis.severity}
+                        </span>
                       </div>
                     ) : (
-                      <span className="text-civic-muted text-xs italic">Awaiting AI</span>
+                      <span className="text-slate-400 text-xs italic">Awaiting AI</span>
                     )}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center font-bold text-civic-primary text-xs">
+                      <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-700 text-xs tabular-nums">
                         {(issue.upvotes || 0) - (issue.downvotes || 0)}
                       </div>
-                      {((issue.upvotes || 0) - (issue.downvotes || 0)) >= 10 && <Flame size={14} className="text-brand-500" />}
+                      {((issue.upvotes || 0) - (issue.downvotes || 0)) >= 10 && <Flame size={14} className="text-amber-500" />}
                     </div>
                   </td>
-                  <td className="px-6 py-4 truncate max-w-[200px] text-civic-muted">
+                  <td className="px-6 py-4 truncate max-w-[200px] text-xs text-slate-500">
                     {issue.location.ward}
                   </td>
                   <td className="px-6 py-4">
                     {getStatusBadge(issue.status)}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button className="text-civic-primary hover:text-civic-primary/80 text-sm font-semibold transition-colors flex items-center justify-end w-full gap-1">
-                      Analyze <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity -ml-1 group-hover:ml-0" />
+                    <button className="text-blue-600 hover:text-blue-800 text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer">
+                      Analyze <ArrowRight size={13} className="opacity-0 group-hover:opacity-100 transition-opacity -ml-1 group-hover:ml-0" />
                     </button>
                   </td>
                 </tr>
@@ -121,16 +122,16 @@ const IssueIntelligence = () => {
       {/* Intelligence Drawer */}
       {selectedIssue && (
         <>
-          <div className="absolute inset-0 bg-civic-text/20 backdrop-blur-sm z-40 rounded-xl" onClick={() => setSelectedIssue(null)}></div>
-          <div className="absolute right-0 top-0 bottom-0 w-[500px] max-w-[95%] bg-white border-l border-civic-border shadow-2xl z-50 flex flex-col overflow-y-auto animate-fade-in custom-scrollbar rounded-r-xl">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40" onClick={() => setSelectedIssue(null)}></div>
+          <div className="fixed right-0 top-0 bottom-0 w-[520px] max-w-[95%] bg-white border-l border-slate-200 shadow-2xl z-50 flex flex-col overflow-y-auto animate-fade-in custom-scrollbar">
             
-            <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-civic-border p-5 flex items-center justify-between z-10">
+            <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 p-5 flex items-center justify-between z-10">
               <div>
-                <div className="text-xs font-bold text-civic-muted tracking-wider mb-1 uppercase">{selectedIssue.id}</div>
-                <h2 className="text-lg font-bold text-civic-text">{selectedIssue.title}</h2>
+                <div className="text-[10px] font-bold text-slate-400 tracking-wider mb-1 uppercase font-mono">{selectedIssue.id}</div>
+                <h2 className="text-base font-bold text-slate-900">{selectedIssue.title}</h2>
               </div>
-              <button onClick={() => setSelectedIssue(null)} className="p-2 text-civic-muted hover:text-civic-text bg-brand-50 hover:bg-brand-100 rounded-lg transition-colors">
-                <X size={20} />
+              <button onClick={() => setSelectedIssue(null)} className="p-2 text-slate-400 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer">
+                <X size={18} />
               </button>
             </div>
 
@@ -139,62 +140,62 @@ const IssueIntelligence = () => {
               {/* Image & Map Context */}
               <div className="grid grid-cols-2 gap-4">
                 {selectedIssue.photos[0] ? (
-                  <img src={selectedIssue.photos[0]} alt="Issue" className="w-full h-32 object-cover rounded-xl border border-brand-200" />
+                  <img src={selectedIssue.photos[0]} alt="Issue" className="w-full h-32 object-cover rounded-xl border border-slate-200" />
                 ) : (
-                  <div className="w-full h-32 bg-brand-50 rounded-xl flex flex-col items-center justify-center text-civic-muted border border-brand-200">
-                    <MapPin size={24} className="mb-2" />
-                    <span className="text-xs font-medium">No image provided</span>
+                  <div className="w-full h-32 bg-slate-100 rounded-xl flex flex-col items-center justify-center text-slate-400 border border-slate-200">
+                    <MapPin size={22} className="mb-1" />
+                    <span className="text-[11px] font-medium">No image attached</span>
                   </div>
                 )}
-                <div className="bg-brand-50 rounded-xl p-4 border border-brand-200 flex flex-col justify-center relative overflow-hidden">
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80 flex flex-col justify-center relative overflow-hidden">
                    <div className="relative z-10">
-                     <h4 className="text-sm font-bold text-civic-text mb-1">{selectedIssue.location.ward}</h4>
-                     <p className="text-xs text-civic-muted leading-relaxed">{selectedIssue.location.address}</p>
+                     <h4 className="text-xs font-bold text-slate-900 mb-1">{selectedIssue.location.ward}</h4>
+                     <p className="text-xs text-slate-500 leading-relaxed">{selectedIssue.location.address}</p>
                    </div>
                 </div>
               </div>
 
               {/* AI Priority Engine View */}
               {selectedIssue.aiAnalysis && (
-                <Card className="border border-brand-200 bg-white shadow-sm p-5 relative overflow-hidden">
+                <Card className="border border-slate-200/80 bg-white shadow-xs p-5 relative overflow-hidden rounded-2xl">
                   <div className="absolute top-0 right-0 p-3 opacity-5">
-                    <BrainCircuit size={64} className="text-civic-primary" />
+                    <BrainCircuit size={64} className="text-blue-600" />
                   </div>
                   
-                  <div className="flex items-center gap-2 mb-6 relative z-10">
-                    <div className="bg-civic-primary/10 text-civic-primary p-1.5 rounded-lg">
-                      <BrainCircuit size={18} />
+                  <div className="flex items-center gap-2 mb-5 relative z-10">
+                    <div className="bg-blue-50 text-blue-600 border border-blue-200/60 p-1.5 rounded-xl">
+                      <BrainCircuit size={17} />
                     </div>
-                    <h3 className="font-bold text-civic-text">AI Priority Engine</h3>
+                    <h3 className="font-bold text-slate-900 text-sm">AI Priority Engine Breakdown</h3>
                   </div>
 
-                  <div className="flex items-center gap-8 mb-6 relative z-10">
-                    <div className="text-center">
-                      <div className={cn("text-4xl font-black", selectedIssue.aiAnalysis.priorityScore > 75 ? "text-civic-danger" : "text-civic-warning")}>
+                  <div className="flex items-center gap-6 mb-5 relative z-10">
+                    <div className="text-center bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl min-w-[85px]">
+                      <div className={cn("text-3xl font-black tabular-nums", selectedIssue.aiAnalysis.priorityScore > 75 ? "text-red-700" : "text-amber-700")}>
                         {selectedIssue.aiAnalysis.priorityScore}
                       </div>
-                      <div className="text-[10px] text-civic-muted font-bold tracking-wider uppercase">Score</div>
+                      <div className="text-[9px] text-slate-400 font-bold tracking-wider uppercase mt-0.5">Priority Index</div>
                     </div>
                     
-                    <div className="flex-1 space-y-2.5">
+                    <div className="flex-1 space-y-2">
                       {selectedIssue.aiAnalysis.priorityReasoning.map((reason, idx) => (
                         <div key={idx} className="flex justify-between text-xs items-center">
-                          <span className="text-civic-muted font-medium truncate mr-2">{reason.factor}</span>
-                          <span className="text-civic-text font-bold bg-brand-50 px-2 py-0.5 rounded">+{reason.score}</span>
+                          <span className="text-slate-500 font-medium truncate mr-2">{reason.factor}</span>
+                          <span className="text-slate-900 font-bold bg-slate-100 px-2 py-0.5 rounded-md tabular-nums">+{reason.score}</span>
                         </div>
                       ))}
                       {selectedIssue.aiAnalysis.possibleDuplicate && (
-                        <div className="flex justify-between text-xs border-t border-brand-100 pt-2 items-center">
-                          <span className="text-civic-muted font-semibold">Possible Duplicate</span>
-                          <span className="text-civic-primary font-bold bg-civic-primary/10 px-2 py-0.5 rounded">+10</span>
+                        <div className="flex justify-between text-xs border-t border-slate-100 pt-2 items-center">
+                          <span className="text-amber-700 font-semibold">Cluster Corroboration</span>
+                          <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-md">+10</span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <div className="bg-civic-accent/10 border border-civic-accent/20 rounded-lg p-3 text-sm text-civic-text relative z-10">
-                    <span className="font-bold text-civic-accent block mb-1">AI Recommendation:</span>
-                    Prioritize this issue within the next 2 hours. High safety risk detected in heavy traffic zone.
+                  <div className="bg-blue-50/70 border border-blue-200/60 rounded-xl p-3 text-xs text-slate-700 relative z-10 leading-relaxed">
+                    <span className="font-bold text-blue-900 block mb-0.5">AI Operational Recommendation:</span>
+                    Prioritize inspection within standard emergency SLA. Spatial proximity correlates with elevated traffic corridor.
                   </div>
                 </Card>
               )}
@@ -202,21 +203,21 @@ const IssueIntelligence = () => {
               {/* Smart Resource Allocation */}
               {(selectedIssue.status === 'REPORTED' || selectedIssue.status === 'AI_VERIFIED') && (
                 <div>
-                  <h3 className="font-bold text-civic-text mb-4 flex items-center gap-2">
-                    <Users size={18} className="text-civic-muted" />
-                    Smart Resource Allocation
+                  <h3 className="font-bold text-slate-900 mb-3 text-xs uppercase tracking-wider flex items-center gap-2">
+                    <Users size={16} className="text-slate-400" />
+                    Field Team Dispatch Options
                   </h3>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {fieldTeams.filter(t => t.departmentId === selectedIssue.aiAnalysis?.suggestedDepartment).map((team, idx) => (
-                      <div key={team.id} className="bg-white border border-brand-200 rounded-xl p-4 flex items-center justify-between hover:border-civic-primary transition-colors shadow-sm">
+                      <div key={team.id} className="bg-white border border-slate-200/80 rounded-xl p-3.5 flex items-center justify-between hover:border-slate-300 transition-colors shadow-2xs">
                         <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-bold text-civic-text text-sm">{team.name}</h4>
-                            {idx === 0 && <span className="bg-civic-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded">AI REC</span>}
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <h4 className="font-bold text-slate-900 text-xs sm:text-sm">{team.name}</h4>
+                            {idx === 0 && <span className="bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">AI OPTIMAL</span>}
                           </div>
-                          <div className="text-xs text-civic-muted font-medium">
-                            {team.status === 'AVAILABLE' ? 'Available now' : `Currently: ${team.status}`} • 1.2km away
+                          <div className="text-[11px] text-slate-400 font-medium">
+                            {team.status === 'AVAILABLE' ? '🟢 Available for dispatch' : `🟡 Status: ${team.status}`} • ~1.2 km radius
                           </div>
                         </div>
                         <Button 
@@ -224,6 +225,7 @@ const IssueIntelligence = () => {
                           disabled={team.status !== 'AVAILABLE'}
                           size="sm"
                           variant={team.status === 'AVAILABLE' ? 'primary' : 'outline'}
+                          className="text-xs font-bold"
                         >
                           Assign Team
                         </Button>
@@ -234,10 +236,12 @@ const IssueIntelligence = () => {
               )}
 
               {selectedIssue.status === 'ASSIGNED' && (
-                <div className="bg-civic-accent/10 border border-civic-accent/20 rounded-xl p-6 text-center">
-                  <CheckCircle2 size={40} className="text-civic-accent mx-auto mb-3" />
-                  <h3 className="text-lg font-bold text-civic-text mb-1">Team Dispatched</h3>
-                  <p className="text-civic-muted text-sm">Team {fieldTeams.find(t => t.id === selectedIssue.assignedTeamId)?.name} is handling this issue.</p>
+                <div className="bg-emerald-50 border border-emerald-200/60 rounded-2xl p-6 text-center">
+                  <CheckCircle2 size={36} className="text-emerald-600 mx-auto mb-2" />
+                  <h3 className="text-sm font-bold text-slate-900 mb-0.5">Field Team Dispatched</h3>
+                  <p className="text-slate-500 text-xs">
+                    Team {fieldTeams.find(t => t.id === selectedIssue.assignedTeamId)?.name || 'Municipal Team'} has been assigned this work order.
+                  </p>
                 </div>
               )}
 

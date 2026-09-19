@@ -1,166 +1,327 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall, Edit2, FileText, Users, Search } from 'lucide-react';
-import { Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
+import { 
+  Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, 
+  Info, CheckCircle2, Crosshair, Mic, Languages, Layers3, Trash2, X, 
+  Edit3, Square, RefreshCw, Construction, Lightbulb, Droplets, Wrench, Shield, HelpCircle 
+} from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Circle, useMap, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { useStore } from '../../store/useStore';
 import { analyzeIssue, detectDuplicates } from '../../services/aiService';
-import { AIAnalysis, IssueCategory, Urgency } from '../../types';
+import { AIAnalysis, IssueCategory, Issue, Urgency } from '../../types';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { PriorityBadge } from '../../components/ui/PriorityBadge';
 import { compressImage } from '../../utils/imageCompression';
-import { saveMediaBlob, getMediaBlob, deleteMediaBlob } from '../../utils/indexedDB';
+import { fetchNominatimSearch, reverseGeocodeCoordinates, SearchResultItem } from '../../services/locationService';
+import { startNativeSpeechRecognition, SpeechRecognitionController, formatTranscript, detectLanguageFromText, clearOldWhisperCaches } from '../../services/transcriptionService';
+import { VoiceErrorBoundary } from '../../components/citizen/VoiceErrorBoundary';
+
+// Fix Leaflet default marker icon paths in Vite
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 const CATEGORIES = [
-  { id: 'Pothole', icon: AlertTriangle, color: 'bg-civic-warning/10 text-civic-warning border-civic-warning/20' },
-  { id: 'Garbage', icon: AlertTriangle, color: 'bg-civic-accent/10 text-civic-accent border-civic-accent/20' },
-  { id: 'Streetlight', icon: AlertTriangle, color: 'bg-brand-100 text-brand-600 border-brand-200' },
-  { id: 'Waterlogging', icon: AlertTriangle, color: 'bg-civic-secondary/10 text-civic-secondary border-civic-secondary/20' },
-  { id: 'Road Damage', icon: AlertTriangle, color: 'bg-orange-100 text-orange-600 border-orange-200' },
-  { id: 'Traffic Sign', icon: AlertTriangle, color: 'bg-civic-danger/10 text-civic-danger border-civic-danger/20' },
-  { id: 'Public Safety', icon: AlertTriangle, color: 'bg-purple-100 text-purple-600 border-purple-200' },
-  { id: 'Other', icon: Info, color: 'bg-brand-100 text-brand-600 border-brand-200' }
+  { id: 'Pothole', icon: Construction, color: 'bg-amber-50 text-amber-600 border-amber-200/60' },
+  { id: 'Garbage', icon: Trash2, color: 'bg-emerald-50 text-emerald-600 border-emerald-200/60' },
+  { id: 'Streetlight', icon: Lightbulb, color: 'bg-yellow-50 text-yellow-600 border-yellow-200/60' },
+  { id: 'Waterlogging', icon: Droplets, color: 'bg-blue-50 text-blue-600 border-blue-200/60' },
+  { id: 'Road Damage', icon: Wrench, color: 'bg-orange-50 text-orange-600 border-orange-200/60' },
+  { id: 'Traffic Sign', icon: AlertTriangle, color: 'bg-red-50 text-red-600 border-red-200/60' },
+  { id: 'Public Safety', icon: Shield, color: 'bg-purple-50 text-purple-600 border-purple-200/60' },
+  { id: 'Other', icon: HelpCircle, color: 'bg-slate-50 text-slate-600 border-slate-200/60' }
 ];
 
 const STEPS = [
-  { num: '01', title: 'Category' },
-  { num: '02', title: 'Description' },
+  { num: '01', title: 'Details' },
+  { num: '02', title: 'Urgency' },
   { num: '03', title: 'Evidence' },
-  { num: '04', title: 'Urgency' },
-  { num: '05', title: 'Location' },
-  { num: '06', title: 'Contact' },
-  { num: '07', title: 'Review' },
-  { num: '08', title: 'Submit' }
+  { num: '04', title: 'Location' },
+  { num: '05', title: 'Review' },
+  { num: '06', title: 'Submit' }
 ];
 
 
+const MapClickHandler = ({ onLocationSelect, active }: { onLocationSelect: (lat: number, lng: number) => void, active: boolean }) => {
+  useMapEvents({
+    click(e) {
+      if (active) {
+        onLocationSelect(e.latlng.lat, e.latlng.lng);
+      }
+    }
+  });
+  return null;
+};
+
+const MapViewport = ({ coordinates }: { coordinates: { lat: number; lng: number } }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView([coordinates.lat, coordinates.lng], Math.max(map.getZoom(), 16), { animate: true });
+  }, [coordinates.lat, coordinates.lng, map]);
+  return null;
+};
 
 const ReportIssue = () => {
   const navigate = useNavigate();
   const routerLocation = useLocation();
-  const { addIssue, currentUser, issues, reportDraft, updateReportDraft, setReportDraft, clearReportDraft } = useStore();
+  const { addIssue, currentUser, issues, reportDraft, updateReportDraft, clearReportDraft } = useStore();
   
-  const [showDraftPrompt, setShowDraftPrompt] = useState(false);
-  const [draftRestored, setDraftRestored] = useState(false);
-
   const [step, setStep] = useState(1);
   const [category, setCategory] = useState<string>('');
+  const [description, setDescription] = useState('');
+  const [urgency, setUrgency] = useState<Urgency | ''>('');
   const [photo, setPhoto] = useState<string | null>(null);
-  const [photoId, setPhotoId] = useState<string | null>(null);
+  
+  // Location states
   const [locationStr, setLocationStr] = useState('Fetching location...');
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState(false);
   const [locationSource, setLocationSource] = useState<'GPS' | 'Manual' | 'Search'>('GPS');
   const [isDropPinMode, setIsDropPinMode] = useState(false);
-  const [description, setDescription] = useState('');
-  const [urgency, setUrgency] = useState<Urgency | ''>('');
-  const [contactPhone, setContactPhone] = useState('');
+  const [mapMode, setMapMode] = useState<'street' | 'satellite'>('satellite');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchSuggestions, setSearchSuggestions] = useState<SearchResultItem[]>([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [hasSearchedLocation, setHasSearchedLocation] = useState(false);
+  const [searchLocationError, setSearchLocationError] = useState<string | null>(null);
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const searchAbortRef = useRef<AbortController | null>(null);
+
+  // Contact info
+  const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
-  
+  const [phoneError, setPhoneError] = useState('');
+
+  // Voice Recording & Speech-to-Text State Machine (100% Browser SpeechRecognition)
+  // States: 'IDLE' | 'RECORDING' | 'TRANSCRIBED' | 'ERROR'
+  type VoiceState = 'IDLE' | 'RECORDING' | 'TRANSCRIBED' | 'ERROR';
+  const [voiceState, setVoiceState] = useState<VoiceState>('IDLE');
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [selectedLanguage, setSelectedLanguage] = useState('auto');
+  const [detectedLanguage, setDetectedLanguage] = useState('');
+  const [voiceErrorMessage, setVoiceErrorMessage] = useState('');
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [hasUsedVoice, setHasUsedVoice] = useState(false);
+  const [isEditingReviewDesc, setIsEditingReviewDesc] = useState(false);
+
+  // Speech Recognition refs
+  const speechControllerRef = useRef<SpeechRecognitionController | null>(null);
+  const latestTranscriptRef = useRef<string>('');
+  const durationTimerRef = useRef<any>(null);
+
+  // AI & Submission states
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
-  const [duplicateData, setDuplicateData] = useState<any>(null);
+  const [duplicateData, setDuplicateData] = useState<{isDuplicate: boolean, relatedIssues: { issue: Issue; distance: number; similarity: number }[]} | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [storageError, setStorageError] = useState(false);
-  
-  const [nearbyIssues, setNearbyIssues] = useState<any[]>([]);
 
-  const [showEmergencyWarning, setShowEmergencyWarning] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
-  const [voiceRecordingId, setVoiceRecordingId] = useState<string | null>(null);
-  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
-  const [voiceTranscript, setVoiceTranscript] = useState<string>('');
-  
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
-  const recognitionRef = useRef<any>(null);
-  const timerRef = useRef<any>(null);
-
-  // Draft prompt logic
+  // Purge any stale Whisper caches left from previous sessions on mount
   useEffect(() => {
-    if (reportDraft && !draftRestored) {
-      setShowDraftPrompt(true);
-    } else {
-      setDraftRestored(true);
-    }
-  }, []); // Only on mount
+    clearOldWhisperCaches().catch(() => {});
+  }, []);
 
-  const restoreDraft = async () => {
-    if (!reportDraft) return;
-    
-    setCategory(reportDraft.category);
-    setDescription(reportDraft.description);
-    setLocationStr(reportDraft.locationStr);
-    setCoordinates(reportDraft.coordinates);
-    setLocationSource(reportDraft.locationSource);
-    setSearchQuery(reportDraft.searchQuery || '');
-    setUrgency(reportDraft.urgency as Urgency);
-    setContactPhone(reportDraft.contactPhone);
-    setContactEmail(reportDraft.contactEmail);
-    setStep(reportDraft.step);
-    
-    setPhotoId(reportDraft.photoId || null);
-    if (reportDraft.photoId) {
-      try {
-        const data = await getMediaBlob(reportDraft.photoId);
-        if (data) setPhoto(data as string);
-      } catch (e) { console.error("Error restoring photo", e); }
-    }
-
-    setVoiceRecordingId(reportDraft.voiceRecordingId || null);
-    if (reportDraft.voiceRecordingId) {
-      try {
-        const data = await getMediaBlob(reportDraft.voiceRecordingId);
-        if (data) {
-          const blob = data as Blob;
-          setVoiceBlob(blob);
-          setVoiceUrl(URL.createObjectURL(blob));
-          setVoiceTranscript(reportDraft.voiceTranscript || '');
-          setRecordingTime(reportDraft.voiceDuration || 0);
-        }
-      } catch (e) { console.error("Error restoring audio", e); }
-    }
-    
-    setShowDraftPrompt(false);
-    setDraftRestored(true);
-  };
-
-  const discardDraft = () => {
-    if (window.confirm("Start a new report? This will discard your current draft.")) {
-      clearReportDraft();
-      setShowDraftPrompt(false);
-      setDraftRestored(true);
-    }
-  };
-
-  // Auto-save logic
+  // Sync draft on mount if available
   useEffect(() => {
-    if (draftRestored && step < 8) {
+    if (reportDraft && !category && !description) {
+      if (reportDraft.category) setCategory(reportDraft.category);
+      if (reportDraft.description) {
+        setDescription(reportDraft.description);
+      }
+      if (reportDraft.urgency) setUrgency(reportDraft.urgency as Urgency);
+      if (reportDraft.locationStr) setLocationStr(reportDraft.locationStr);
+      if (reportDraft.coordinates) setCoordinates(reportDraft.coordinates);
+      if (reportDraft.contactPhone) setContactPhone(reportDraft.contactPhone);
+      if (reportDraft.contactEmail) setContactEmail(reportDraft.contactEmail);
+    }
+  }, []);
+
+  // Update draft as user edits
+  useEffect(() => {
+    if (step < 6) {
       updateReportDraft({
         category,
         description,
+        urgency,
         locationStr,
         coordinates,
         locationSource,
-        searchQuery,
-        urgency,
         contactPhone,
         contactEmail,
-        step,
-        photoId: photoId || undefined,
-        voiceRecordingId: voiceRecordingId || undefined,
-        voiceTranscript,
-        voiceDuration: recordingTime
+        step
       });
     }
-  }, [category, description, locationStr, coordinates, locationSource, searchQuery, urgency, contactPhone, contactEmail, step, photoId, voiceRecordingId, voiceTranscript, recordingTime, draftRestored]);
+  }, [category, description, urgency, locationStr, coordinates, locationSource, contactPhone, contactEmail, step]);
 
+  const formatDuration = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const remainder = secs % 60;
+    return `${mins.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`;
+  };
+
+  const startRecording = () => {
+    try {
+      setVoiceErrorMessage('');
+      setLiveTranscript('');
+      latestTranscriptRef.current = '';
+
+      const controller = startNativeSpeechRecognition({
+        language: selectedLanguage,
+        onStart: () => {
+          setVoiceState('RECORDING');
+          setRecordingDuration(0);
+          setHasUsedVoice(true);
+        },
+        onInterim: (_interim, fullPreview) => {
+          setLiveTranscript(fullPreview);
+          latestTranscriptRef.current = fullPreview;
+        },
+        onFinal: (finalText) => {
+          setLiveTranscript(finalText);
+          latestTranscriptRef.current = finalText;
+        },
+        onError: (errMsg) => {
+          console.warn('[ReportIssue] Voice notice:', errMsg);
+          setVoiceState('ERROR');
+          setVoiceErrorMessage(errMsg);
+          if (durationTimerRef.current) {
+            clearInterval(durationTimerRef.current);
+            durationTimerRef.current = null;
+          }
+        },
+        onEnd: () => {
+          // Final handling in stopRecording
+        }
+      });
+
+      if (!controller) return;
+      speechControllerRef.current = controller;
+
+      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+      const startTime = Date.now();
+      durationTimerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setRecordingDuration(elapsed);
+        // Automatically stop recording at 60 seconds (maximum limit)
+        if (elapsed >= 60) {
+          stopRecording();
+        }
+      }, 1000);
+    } catch (err: any) {
+      console.error('[Voice] Error starting speech recognition:', err);
+      setVoiceState('ERROR');
+      setVoiceErrorMessage('Voice transcription could not start. Please check microphone permission.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+
+    if (speechControllerRef.current) {
+      speechControllerRef.current.stop();
+      speechControllerRef.current = null;
+    }
+
+    const rawText = latestTranscriptRef.current.trim();
+    if (!rawText) {
+      setVoiceState('ERROR');
+      setVoiceErrorMessage('No speech was detected. Please try again.');
+      return;
+    }
+
+    const formattedText = formatTranscript(rawText);
+    const lang = detectLanguageFromText(formattedText);
+    setDetectedLanguage(lang);
+
+    const finalDescription = formattedText;
+
+    if (description && description.trim() && description.trim() !== finalDescription) {
+      setPendingTranscript(finalDescription);
+      setShowMergeDialog(true);
+      setVoiceState('TRANSCRIBED');
+    } else {
+      setDescription(finalDescription);
+      updateReportDraft({ description: finalDescription });
+      setVoiceState('TRANSCRIBED');
+    }
+
+    // Direct AI analysis with the fresh transcript
+    try {
+      runAnalysis(finalDescription);
+    } catch (aiErr) {
+      console.warn('[ReportIssue] AI analysis notice:', aiErr);
+    }
+  };
+
+  const handleRecordAgain = () => {
+    setVoiceState('IDLE');
+    setVoiceErrorMessage('');
+    setLiveTranscript('');
+    latestTranscriptRef.current = '';
+    startRecording();
+  };
+
+  const handleMergeReplace = () => {
+    if (pendingTranscript) {
+      setDescription(pendingTranscript);
+      updateReportDraft({ description: pendingTranscript });
+    }
+    setShowMergeDialog(false);
+    setPendingTranscript(null);
+  };
+
+  const handleMergeAppend = () => {
+    if (pendingTranscript) {
+      const combined = `${description.trim()} ${pendingTranscript.trim()}`;
+      setDescription(combined);
+      updateReportDraft({ description: combined });
+    }
+    setShowMergeDialog(false);
+    setPendingTranscript(null);
+  };
+
+  const handleMergeCancel = () => {
+    setShowMergeDialog(false);
+    setPendingTranscript(null);
+  };
+
+  const handleClearDescription = () => {
+    setDescription('');
+    updateReportDraft({ description: '' });
+    setVoiceState('IDLE');
+    setLiveTranscript('');
+    setPendingTranscript(null);
+    setShowMergeDialog(false);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+      if (speechControllerRef.current) {
+        speechControllerRef.current.abort();
+        speechControllerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Photo handlers
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -168,12 +329,8 @@ const ReportIssue = () => {
         setIsCompressing(true);
         const compressedBase64 = await compressImage(file);
         setPhoto(compressedBase64);
-        
-        const newPhotoId = `photo-${Date.now()}`;
-        await saveMediaBlob(newPhotoId, compressedBase64);
-        setPhotoId(newPhotoId);
       } catch (error) {
-        console.error("Failed to process image:", error);
+        console.error("Failed to compress image:", error);
         alert("Failed to process image. Please try another one.");
       } finally {
         setIsCompressing(false);
@@ -181,271 +338,235 @@ const ReportIssue = () => {
     }
   };
 
-  const handleRemovePhoto = async () => {
+  const handleRemovePhoto = () => {
     setPhoto(null);
-    if (photoId) {
-      await deleteMediaBlob(photoId);
-      setPhotoId(null);
-    }
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        setVoiceBlob(audioBlob);
-        const url = URL.createObjectURL(audioBlob);
-        setVoiceUrl(url);
-        stream.getTracks().forEach(track => track.stop());
-        
-        const newAudioId = `audio-${Date.now()}`;
-        await saveMediaBlob(newAudioId, audioBlob);
-        setVoiceRecordingId(newAudioId);
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingTime(0);
-      
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          if (prev >= 59) {
-            stopRecording();
-            return 60;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-IN';
-        
-        recognition.onresult = (event: any) => {
-          let currentTranscript = '';
-          for (let i = 0; i < event.results.length; i++) {
-            currentTranscript += event.results[i][0].transcript;
-          }
-          setVoiceTranscript(currentTranscript);
-        };
-        
-        recognition.start();
-        recognitionRef.current = recognition;
-      }
-
-    } catch (err) {
-      console.error("Microphone access denied:", err);
-      alert("Microphone permission is required to record your issue.");
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      clearInterval(timerRef.current);
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    }
-  };
-
-  const deleteRecording = async () => {
-    setVoiceBlob(null);
-    if (voiceUrl) URL.revokeObjectURL(voiceUrl);
-    setVoiceUrl(null);
-    setVoiceTranscript('');
-    setRecordingTime(0);
-    if (voiceRecordingId) {
-      await deleteMediaBlob(voiceRecordingId);
-      setVoiceRecordingId(null);
-    }
-  };
-
-  useEffect(() => {
-    if (!draftRestored) return;
-    
-    const params = new URLSearchParams(routerLocation.search);
-    const paramLat = params.get('lat');
-    const paramLng = params.get('lng');
-    const paramAddr = params.get('address');
-    
-    if (paramLat && paramLng && step === 1) {
-      setCoordinates({ lat: parseFloat(paramLat), lng: parseFloat(paramLng) });
-      setLocationStr(paramAddr || 'Selected from Map');
-      setLocationSource('Search');
-      setStep(5); // Jump to location
-    } else if (step === 5 && !isLocating && !coordinates && !locationError && locationSource === 'GPS') {
-      fetchLiveLocation();
-    }
-  }, [step, routerLocation.search, draftRestored]);
-
-  // Check for nearby issues of same category
-  useEffect(() => {
-    if (category && coordinates) {
-      const getDistKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-        const R = 6371; 
-        const dLat = (lat2 - lat1) * (Math.PI / 180);
-        const dLon = (lon2 - lon1) * (Math.PI / 180);
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))); 
-      };
-      
-      const nearby = issues.filter(issue => 
-        issue.category === category &&
-        getDistKm(coordinates.lat, coordinates.lng, issue.location.lat, issue.location.lng) < 2.0 // 2km radius
-      );
-      setNearbyIssues(nearby);
-    } else {
-      setNearbyIssues([]);
-    }
-  }, [category, coordinates, issues]);
-
+  // Geolocation & Map handlers
   const fetchLiveLocation = () => {
     setIsLocating(true);
     setLocationError(false);
     setLocationStr('Getting live GPS location...');
+    
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setCoordinates({ lat: position.coords.latitude, lng: position.coords.longitude });
-          setLocationStr(`Lat: ${position.coords.latitude.toFixed(4)}, Lng: ${position.coords.longitude.toFixed(4)}`);
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setCoordinates({ lat, lng });
           setLocationSource('GPS');
           setIsLocating(false);
-          reverseGeocode(position.coords.latitude, position.coords.longitude);
+          reverseGeocode(lat, lng);
         },
         (error) => {
-          setLocationStr('Location access is required or failed.');
-          setCoordinates(null);
-          setLocationError(true);
+          console.error("Error getting location:", error);
+          setLocationStr('Location access denied. Use search or drop pin.');
+          setCoordinates({ lat: 30.7333, lng: 76.7794 }); // Fallback to Chandigarh region
+          setLocationError(false);
           setIsLocating(false);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
       setLocationStr('Geolocation not supported by this browser.');
-      setCoordinates(null);
-      setLocationError(true);
+      setCoordinates({ lat: 30.7333, lng: 76.7794 });
       setIsLocating(false);
     }
   };
 
-
-  const geocodingLib = useMapsLibrary('geocoding');
-  const placesLib = useMapsLibrary('places');
-  const geocoder = React.useMemo(() => geocodingLib ? new geocodingLib.Geocoder() : null, [geocodingLib]);
-  
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const [placeAutocomplete, setPlaceAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
-
-  React.useEffect(() => {
-    if (!placesLib || !inputRef.current) return;
-    const options = {
-      fields: ['geometry', 'name', 'formatted_address'],
-      componentRestrictions: { country: 'in' },
-    };
-    setPlaceAutocomplete(new placesLib.Autocomplete(inputRef.current, options));
-  }, [placesLib]);
-
-  React.useEffect(() => {
-    if (!placeAutocomplete) return;
-    placeAutocomplete.addListener('place_changed', () => {
-      const place = placeAutocomplete.getPlace();
-      if (place.geometry?.location) {
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        setCoordinates({ lat, lng });
-        setLocationSource('Search');
-        setLocationStr(place.name || place.formatted_address || 'Selected Location');
-        setLocationError(false);
-        setIsDropPinMode(false);
+  // Check URL params or initial GPS
+  useEffect(() => {
+    const params = new URLSearchParams(routerLocation.search);
+    const paramLat = params.get('lat');
+    const paramLng = params.get('lng');
+    const paramAddr = params.get('address');
+    
+    if (paramLat && paramLng) {
+      setCoordinates({ lat: parseFloat(paramLat), lng: parseFloat(paramLng) });
+      setLocationStr(paramAddr || 'Selected location');
+      setLocationSource('Search');
+      if (step === 1) {
+        setStep(4);
       }
-    });
-  }, [placeAutocomplete, placeAutocomplete?.addListener]);
-  
-  const reverseGeocode = async (lat: number, lng: number) => {
-    if (!geocoder) return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
-    try {
-      const response = await geocoder.geocode({ location: { lat, lng } });
-      if (response.results[0]) {
-        return response.results[0].formatted_address;
-      }
-    } catch (e) {
-      console.error(e);
+    } else if (step === 4 && !coordinates && !isLocating) {
+      fetchLiveLocation();
     }
-    return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+  }, [step, routerLocation.search]);
+
+  const reverseGeocode = async (lat: number, lng: number) => {
+    try {
+      const addr = await reverseGeocodeCoordinates(lat, lng);
+      setLocationStr(addr);
+    } catch {
+      setLocationStr(`Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`);
+    }
   };
 
   const handleManualLocation = () => {
     setIsDropPinMode(true);
     if (!coordinates) {
-      setCoordinates({ lat: 30.7333, lng: 76.7794 }); // default Chandigarh
+      setCoordinates({ lat: 30.7333, lng: 76.7794 });
     }
-    setLocationStr('Drop Pin Mode: Click anywhere on the map to select the issue location.');
+    setLocationStr('Click anywhere on the map to drop a pin.');
     setLocationSource('Manual');
     setLocationError(false);
   };
 
-  const handleMapClick = (lat: number, lng: number) => {
+  const handleMapClick = async (lat: number, lng: number) => {
     setCoordinates({ lat, lng });
     setLocationSource('Manual');
     setIsDropPinMode(false);
     setLocationStr('Fetching address...');
-    reverseGeocode(lat, lng).then(addr => setLocationStr(addr));
+    const addr = await reverseGeocodeCoordinates(lat, lng);
+    setLocationStr(addr);
   };
 
-
-
-  const getAIAnalysis = async () => {
-    setStep('AI_LOADING' as any);
-    setIsAnalyzing(true);
-    const analysisText = description.trim() ? description : voiceTranscript;
-    const [analysis, dupes] = await Promise.all([
-      analyzeIssue(photo, analysisText, urgency as Urgency, (category || 'Other') as IssueCategory),
-      detectDuplicates(coordinates?.lat || 0, coordinates?.lng || 0, (category || 'Other') as IssueCategory, analysisText, issues)
-    ]);
-    setAiResult(analysis);
-    setDuplicateData(dupes);
-    setIsAnalyzing(false);
-    setStep('AI_REVIEW' as any);
-  };
-
-  const handleSubmit = async () => {
-    const newId = `CP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    
-    let voiceRecordingData = undefined;
-    if (voiceBlob && voiceRecordingId) {
-      voiceRecordingData = {
-        id: voiceRecordingId,
-        duration: recordingTime,
-        mimeType: voiceBlob.type || 'audio/webm',
-        transcript: voiceTranscript || undefined
-      };
+  // Debounced location search
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      setSearchSuggestions([]);
+      setIsSearchingLocation(false);
+      setHasSearchedLocation(false);
+      setSearchLocationError(null);
+      setIsSuggestionsOpen(false);
+      return;
     }
+
+    const timer = setTimeout(() => {
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+
+      setIsSearchingLocation(true);
+      setSearchLocationError(null);
+      setHasSearchedLocation(false);
+      setIsSuggestionsOpen(true);
+      setHighlightedIndex(-1);
+
+      fetchNominatimSearch(trimmed, coordinates, controller.signal)
+        .then((items) => {
+          setSearchSuggestions(items);
+          setIsSearchingLocation(false);
+          setHasSearchedLocation(true);
+        })
+        .catch((err) => {
+          if (err.name === 'AbortError') return;
+          console.error("Search error:", err);
+          setIsSearchingLocation(false);
+          setHasSearchedLocation(true);
+          setSearchLocationError("Location search is temporarily unavailable. You can drop a pin manually.");
+        });
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, coordinates]);
+
+  const handleSearchLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = searchQuery.trim();
+    if (!trimmed || trimmed.length < 2) return;
+
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
+    setIsSearchingLocation(true);
+    setSearchLocationError(null);
+    setHasSearchedLocation(false);
+    setIsSuggestionsOpen(true);
+    setHighlightedIndex(-1);
+
+    try {
+      const items = await fetchNominatimSearch(trimmed, coordinates, controller.signal);
+      setSearchSuggestions(items);
+      setIsSearchingLocation(false);
+      setHasSearchedLocation(true);
+      if (items.length === 1) {
+        handleSelectSuggestion(items[0]);
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      setIsSearchingLocation(false);
+      setHasSearchedLocation(true);
+      setSearchLocationError("Location search is temporarily unavailable. You can drop a pin manually.");
+    }
+  };
+
+  const handleSelectSuggestion = (suggestion: SearchResultItem) => {
+    setCoordinates({ lat: suggestion.lat, lng: suggestion.lng });
+    setLocationStr(suggestion.displayName);
+    setLocationSource('Search');
+    setLocationError(false);
+    setIsDropPinMode(false);
+    setIsSuggestionsOpen(false);
+    setSearchSuggestions([]);
+    setSearchQuery(suggestion.placeName);
+    setHasSearchedLocation(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isSuggestionsOpen || searchSuggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev < searchSuggestions.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : searchSuggestions.length - 1));
+    } else if (e.key === 'Enter') {
+      if (highlightedIndex >= 0 && highlightedIndex < searchSuggestions.length) {
+        e.preventDefault();
+        handleSelectSuggestion(searchSuggestions[highlightedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsSuggestionsOpen(false);
+    }
+  };
+
+  // Run AI analysis
+  const runAnalysis = async (customDescription?: string) => {
+    setIsAnalyzing(true);
+    const finalDescription = (typeof customDescription === 'string' ? customDescription : description).trim();
+    
+    try {
+      const [analysis, dupes] = await Promise.all([
+        analyzeIssue(photo, finalDescription, (urgency || 'MODERATE') as Urgency, (category || 'Other') as IssueCategory),
+        detectDuplicates(coordinates?.lat || 0, coordinates?.lng || 0, (category || 'Other') as IssueCategory, finalDescription, issues)
+      ]);
+      
+      setAiResult(analysis);
+      setDuplicateData(dupes);
+    } catch (err) {
+      console.error("Error during analysis:", err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Final submit handler
+  const handleSubmit = () => {
+    if (contactPhone && contactPhone.length !== 10) {
+      setPhoneError('Mobile number must contain 10 digits.');
+      return;
+    }
+    const finalDescription = description.trim();
+    const newId = `CP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     
     try {
       addIssue({
         id: newId,
-        title: `${category || aiResult?.detectedCategory} at ${locationStr}`,
-        description,
-        category: (category || aiResult?.detectedCategory) as IssueCategory,
+        title: `${category || aiResult?.detectedCategory || 'Civic Issue'} at ${locationStr.split(',')[0]}`,
+        description: finalDescription,
+        category: (category || aiResult?.detectedCategory || 'Other') as IssueCategory,
         location: {
-          lat: coordinates?.lat || 0,
-          lng: coordinates?.lng || 0,
+          lat: coordinates?.lat || 30.7333,
+          lng: coordinates?.lng || 76.7794,
           address: locationStr + (locationSource !== 'GPS' ? ` (${locationSource})` : ''),
           ward: 'Ward 4',
           zone: 'Central'
@@ -454,696 +575,978 @@ const ReportIssue = () => {
         status: 'REPORTED',
         priority: aiResult?.severity || 'MEDIUM',
         priorityScore: aiResult?.priorityScore || 50,
-        citizenUrgency: urgency as Urgency,
+        citizenUrgency: (urgency || 'MODERATE') as Urgency,
         estimatedResolutionTime: aiResult?.estimatedResolutionTime || '2-5 days',
         reporterId: currentUser?.id || 'user-1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        slaTarget: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        slaTarget: (() => {
+          const severity = aiResult?.severity || 'MEDIUM';
+          const hours = severity === 'CRITICAL' ? 4 : severity === 'HIGH' ? 12 : severity === 'MEDIUM' ? 24 : 72;
+          return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+        })(),
         aiAnalysis: aiResult || undefined,
         contactPhone: contactPhone || undefined,
         contactEmail: contactEmail || undefined,
-        voiceRecording: voiceRecordingData,
         timeline: [
           { id: `tl-${Date.now()}`, status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Issue reported by citizen', actor: 'Citizen' },
           ...(aiResult ? [{ id: `tl-${Date.now()+1}`, status: 'AI_VERIFIED' as const, timestamp: new Date().toISOString(), description: 'AI categorized and prioritized', actor: 'System AI' }] : [])
         ]
       });
       
+      clearReportDraft();
       setStorageError(false);
-      clearReportDraft(); // Clear draft on successful submission
-      setStep(8);
+      setStep(6);
     } catch (error) {
-      console.error("Storage error:", error);
+      console.error("Storage error when submitting issue:", error);
       setStorageError(true);
-      setStep(7); // Go back to review on error
     }
   };
 
   const pageVariants = {
-    initial: { opacity: 0, x: 10 },
+    initial: { opacity: 0, x: 20 },
     in: { opacity: 1, x: 0 },
-    out: { opacity: 0, x: -10 }
+    out: { opacity: 0, x: -20 }
   };
 
-  const canProceedStep2 = description.trim().length >= 5 || voiceBlob !== null;
-
-  if (showDraftPrompt) {
-    return (
-      <div className="max-w-md mx-auto mt-20 p-6 bg-white rounded-2xl shadow-xl text-center border border-civic-border">
-        <div className="w-16 h-16 bg-civic-primary/10 text-civic-primary rounded-full flex items-center justify-center mx-auto mb-4">
-          <FileText size={32} />
-        </div>
-        <h2 className="text-2xl font-bold text-civic-text mb-2">Continue your unfinished report?</h2>
-        <p className="text-civic-muted mb-6">
-          You have an unfinished report draft.
-        </p>
-        <div className="flex flex-col gap-3">
-          <Button onClick={restoreDraft} className="w-full h-12 text-md">
-            Continue Draft
-          </Button>
-          <Button onClick={discardDraft} variant="outline" className="w-full h-12 text-md text-red-500 border-red-200 hover:bg-red-50">
-            Start New Report
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-2xl mx-auto py-4 md:py-8">
-      {/* Draft Indicator */}
-      {reportDraft && step < 8 && step !== ('AI_LOADING' as any) && step !== ('AI_REVIEW' as any) && (
-        <div className="flex items-center justify-end mb-2">
-          <span className="text-xs text-brand-500 bg-brand-100 px-2 py-1 rounded flex items-center gap-1">
-            <Check size={12} /> Draft saved
-          </span>
-        </div>
-      )}
-
+    <div className="max-w-4xl mx-auto py-2 sm:py-4 animate-fade-in">
       {/* Step Indicator */}
-      {typeof step === 'number' && step < 8 && (
-        <div className="mb-8 overflow-x-auto pb-4">
-          <div className="flex justify-between items-center relative min-w-[500px]">
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-brand-200 -z-10 rounded-full"></div>
-            <div 
-              className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-civic-primary -z-10 rounded-full transition-all duration-300"
-              style={{ width: `${((step - 1) / 6) * 100}%` }}
-            ></div>
-            
-            {STEPS.slice(0, 7).map((s, idx) => {
-              const isActive = step === idx + 1;
-              const isPast = step > idx + 1;
-              return (
-                <div key={s.num} className="flex flex-col items-center gap-2">
-                  <div className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors",
-                    isActive ? "bg-civic-primary text-white ring-4 ring-civic-primary/20" : 
-                    isPast ? "bg-civic-primary text-white" : "bg-brand-100 text-brand-500"
-                  )}>
-                    {isPast ? <Check size={16} /> : s.num}
-                  </div>
-                  <span className={cn(
-                    "text-xs font-medium hidden sm:block whitespace-nowrap",
-                    isActive || isPast ? "text-civic-primary" : "text-brand-400"
-                  )}>{s.title}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {nearbyIssues.length > 0 && step >= 5 && step < 8 && (
-        <div className="mb-4 bg-brand-50 border border-brand-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <Users size={24} className="text-civic-primary mt-1 flex-shrink-0" />
-            <div>
-              <h4 className="font-bold text-civic-text text-sm">People in your area are also reporting this issue.</h4>
-              <p className="text-xs text-civic-muted mt-1">
-                {nearbyIssues.length} nearby reports • {nearbyIssues.reduce((acc, iss) => acc + (iss.upvotes || 0), 0)} community upvotes
-              </p>
+      <div className="mb-6 flex justify-between items-center bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-x-auto hide-scrollbar">
+        {STEPS.map((s, idx) => {
+          const isCurrent = step === idx + 1;
+          const isCompleted = step > idx + 1;
+          return (
+            <div key={s.num} className="flex items-center min-w-max">
+              <div className={cn(
+                "flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full font-bold text-xs mr-2 transition-all duration-200",
+                isCurrent ? "bg-slate-900 text-white shadow-xs" :
+                isCompleted ? "bg-blue-50 text-blue-700 border border-blue-200/60" : "bg-slate-100 text-slate-400"
+              )}>
+                {isCompleted ? "✓" : s.num}
+              </div>
+              <span className={cn(
+                "text-xs mr-3 sm:mr-6 transition-colors",
+                isCurrent ? "text-slate-900 font-bold" :
+                isCompleted ? "text-slate-700 font-semibold" : "text-slate-400 font-medium"
+              )}>
+                {s.title}
+              </span>
+              {idx < STEPS.length - 1 && <ChevronRight size={14} className="text-slate-300 mr-3 sm:mr-6 shrink-0" />}
             </div>
-          </div>
-          <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => navigate('/community-pulse')}>
-            View Community Reports
-          </Button>
-        </div>
-      )}
+          );
+        })}
+      </div>
 
-      <Card className="min-h-[500px] flex flex-col relative overflow-hidden bg-white shadow-sm border-civic-border">
+      <Card className="min-h-[500px] flex flex-col p-5 sm:p-7 bg-white border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] rounded-2xl relative">
         <AnimatePresence mode="wait">
+          {/* STEP 1: DETAILS (Category + Description + Voice-to-Text) */}
           {step === 1 && (
             <motion.div key="step1" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <PageHeader 
-                title="What's the issue?" 
-                description="Select a category that best describes the problem." 
-                className="mb-6"
+                title="Issue Details" 
+                description="Select an official category and describe the civic problem you observed." 
+                className="mb-5"
               />
               
-              {showEmergencyWarning ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-red-50 rounded-xl border border-red-200">
-                  <AlertTriangle className="text-red-500 mb-4" size={48} />
-                  <h3 className="text-xl font-bold text-red-700 mb-2">Is this an immediate emergency?</h3>
-                  <p className="text-red-600 mb-8 max-w-md">
-                    CivicPulse is designed for civic issue reporting and tracking. For immediate emergencies or danger, contact the appropriate emergency service directly.
-                  </p>
-                  <div className="flex flex-col w-full gap-3 max-w-xs">
-                    <a href="tel:112" className="w-full">
-                      <Button className="w-full bg-red-600 hover:bg-red-700 text-white gap-2 h-14 text-lg border-0">
-                        <PhoneCall size={20} /> Yes — Call 112
-                      </Button>
-                    </a>
-                    <Button variant="outline" className="w-full" onClick={() => { setShowEmergencyWarning(false); setStep(2); }}>
-                      No — Continue Report
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1 mb-8">
-                    {CATEGORIES.map(cat => (
+              <div className="mb-5">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2.5">Select Category *</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {CATEGORIES.map(cat => {
+                    const Icon = cat.icon;
+                    const isSelected = category === cat.id;
+                    return (
                       <button
                         key={cat.id}
-                        onClick={() => {
-                          setCategory(cat.id);
-                          if (cat.id === 'Public Safety') setShowEmergencyWarning(true);
-                          else setStep(2);
-                        }}
+                        type="button"
+                        onClick={() => setCategory(cat.id)}
                         className={cn(
-                          "flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-civic-primary bg-white hover:border-brand-300 hover:bg-brand-50",
-                          category === cat.id ? "border-civic-primary" : "border-brand-200"
+                          "flex flex-col items-center justify-center p-3.5 rounded-2xl border transition-all duration-180 hover:-translate-y-0.5 focus:outline-none cursor-pointer group",
+                          isSelected 
+                            ? "border-slate-900 bg-slate-50/90 shadow-xs ring-2 ring-slate-900" 
+                            : "border-slate-200/80 hover:border-slate-300 hover:shadow-[0_4px_20px_rgba(15,23,42,0.04)] bg-white"
                         )}
                       >
-                        <div className={cn("w-12 h-12 rounded-full flex items-center justify-center mb-3", cat.color)}>
-                          <cat.icon size={24} />
+                        <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center mb-2 border transition-transform duration-180 group-hover:scale-105", cat.color)}>
+                          <Icon size={20} />
                         </div>
-                        <span className="font-semibold text-sm text-civic-text text-center">{cat.id}</span>
+                        <span className={cn("text-xs font-semibold transition-colors", isSelected ? "text-slate-900 font-bold" : "text-slate-700")}>
+                          {cat.id}
+                        </span>
                       </button>
-                    ))}
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col mb-4">
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Description *</label>
+                  <div className="flex items-center gap-2">
+                    {description && (
+                      <button 
+                        type="button" 
+                        onClick={handleClearDescription} 
+                        className="text-xs text-slate-400 hover:text-red-600 flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Clear description"
+                      >
+                        <Trash2 size={13} /> Clear
+                      </button>
+                    )}
+                    <span className="text-xs text-slate-400">{description.length} chars</span>
                   </div>
-                  {category && (
-                    <div className="flex justify-end mt-auto pt-4 border-t border-brand-100">
-                      <Button onClick={() => setStep(2)} size="lg" className="px-8">
-                        Continue <ChevronRight size={18} className="ml-1" />
+                </div>
+
+                <textarea
+                  id="issue-description-input"
+                  placeholder="Describe the issue in detail, or click the microphone below to dictate your description..."
+                  className="w-full p-3.5 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 text-sm min-h-[100px] resize-none text-slate-900 placeholder:text-slate-400 bg-white transition-all duration-150"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+
+                {/* VOICE INPUT SECTION (Protected by VoiceErrorBoundary) */}
+                <VoiceErrorBoundary>
+                  <div className="mt-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4">
+                  {/* Merge Dialog Prompt if manual text already exists */}
+                  {showMergeDialog && pendingTranscript && (
+                    <div className="mb-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm animate-fade-in">
+                      <div className="flex items-start gap-2.5 mb-2">
+                        <Info size={18} className="text-blue-600 shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Voice Transcript Ready</h4>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            You already entered a description. Would you like to replace the current text or append the new voice transcript?
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs text-slate-800 italic mb-3">
+                        "{pendingTranscript}"
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" onClick={handleMergeReplace} size="sm" className="text-xs font-bold bg-slate-900 text-white">
+                          Replace
+                        </Button>
+                        <Button type="button" onClick={handleMergeAppend} variant="outline" size="sm" className="text-xs font-bold">
+                          Append
+                        </Button>
+                        <Button type="button" onClick={handleMergeCancel} variant="ghost" size="sm" className="text-xs text-slate-500">
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Header: Controls and Language selector */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      {voiceState === 'RECORDING' ? (
+                        <button
+                          type="button"
+                          onClick={stopRecording}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white shadow-md animate-pulse hover:bg-red-700 transition-all focus:outline-none cursor-pointer"
+                          title="Stop Recording"
+                        >
+                          <Square size={16} className="fill-white" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={startRecording}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all shadow-xs focus:outline-none bg-slate-900 text-white hover:bg-slate-800 hover:-translate-y-0.5 cursor-pointer"
+                          title="Record Voice"
+                        >
+                          <Mic size={18} />
+                        </button>
+                      )}
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                          {voiceState === 'RECORDING' && (
+                            <>
+                              <span className="text-red-600 flex items-center gap-1.5">
+                                <span className="h-2 w-2 rounded-full bg-red-600 animate-ping" />
+                                Listening...
+                              </span>
+                              <span className="font-mono text-xs bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full font-bold">
+                                {formatDuration(recordingDuration)}
+                              </span>
+                            </>
+                          )}
+                          {voiceState === 'TRANSCRIBED' && (
+                            <span className="text-emerald-700 flex items-center gap-1.5">
+                              <CheckCircle2 size={16} className="text-emerald-600" /> Voice converted to text
+                            </span>
+                          )}
+                          {voiceState === 'ERROR' && (
+                            <span className="text-red-600 flex items-center gap-1">
+                              <AlertTriangle size={15} /> Voice Notice
+                            </span>
+                          )}
+                          {voiceState === 'IDLE' && (
+                            <span className="flex items-center gap-1.5">
+                              Voice Description
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {voiceState === 'RECORDING' && "Speak clearly. Live transcript will appear below. Max 60 seconds."}
+                          {voiceState === 'TRANSCRIBED' && "Transcript populated in description above. You can edit it freely."}
+                          {voiceState === 'ERROR' && (voiceErrorMessage || "Voice transcription is unavailable.")}
+                          {voiceState === 'IDLE' && "Voice transcription uses your browser's speech recognition."}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Language Dropdown Selector */}
+                    <div className="flex items-center gap-2 self-start sm:self-center">
+                      <Languages size={14} className="text-slate-400" />
+                      <select
+                        value={selectedLanguage}
+                        onChange={(e) => setSelectedLanguage(e.target.value)}
+                        disabled={voiceState === 'RECORDING'}
+                        className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-slate-900 cursor-pointer disabled:opacity-60 font-semibold shadow-2xs"
+                      >
+                        <option value="auto">Auto Detect</option>
+                        <option value="en">English (en-IN)</option>
+                        <option value="hi">हिन्दी (Hindi, hi-IN)</option>
+                        <option value="pa">ਪੰਜਾਬੀ (Punjabi, pa-IN)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Live Progressive Transcript Box */}
+                  {voiceState === 'RECORDING' && (
+                    <div className="mt-3 bg-white border border-blue-200/80 rounded-xl p-3 shadow-xs animate-fade-in">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="h-2 w-2 rounded-full bg-blue-600 animate-ping" />
+                        <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Live Transcript</span>
+                      </div>
+                      <p className="text-sm text-slate-800 italic font-medium leading-relaxed">
+                        "{liveTranscript || 'Listening for speech...'}"
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Recording Live Action Bar */}
+                  {voiceState === 'RECORDING' && (
+                    <div className="mt-3 bg-red-50/80 border border-red-200 rounded-xl p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-red-700">
+                        <span className="h-2.5 w-2.5 rounded-full bg-red-600 animate-ping" />
+                        <span>Listening... ({formatDuration(recordingDuration)})</span>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={stopRecording}
+                        size="sm"
+                        className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs h-8 px-3"
+                      >
+                        <Square size={12} className="mr-1 fill-white" /> Stop Recording
                       </Button>
                     </div>
                   )}
-                </>
-              )}
-            </motion.div>
-          )}
 
-          {step === 2 && (
-            <motion.div key="step2" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
-              <div className="mb-4">
-                <button onClick={() => { setShowEmergencyWarning(false); setStep(1); }} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
-                  <ChevronLeft size={16} className="mr-1" /> Back
-                </button>
-              </div>
-              <PageHeader 
-                title="Description" 
-                description="Describe the issue or record a voice message." 
-                className="mb-6"
-              />
-              
-              <div className="flex-1 flex flex-col gap-6">
-                <div>
-                  <label className="block text-sm font-semibold text-civic-text mb-2">Text Description</label>
-                  <textarea
-                    className={cn("w-full p-3 border rounded-lg bg-brand-50 text-civic-text focus:border-civic-primary focus:ring-1 focus:ring-civic-primary outline-none transition-colors resize-none h-24 mb-1", !canProceedStep2 ? "border-red-300" : "border-brand-200")}
-                    placeholder="Provide details... e.g. 'Large pothole near university gate.'"
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-center">
-                  <div className="h-px bg-brand-200 flex-1"></div>
-                  <span className="px-4 text-xs font-bold text-civic-muted uppercase tracking-wider">OR</span>
-                  <div className="h-px bg-brand-200 flex-1"></div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-civic-text mb-2">Can't type? Record your issue</label>
-                  {!voiceBlob ? (
-                    <div className="bg-brand-50 border border-brand-200 rounded-xl p-6 flex flex-col items-center justify-center text-center">
-                      {!isRecording ? (
-                        <button onClick={startRecording} className="w-16 h-16 rounded-full bg-civic-primary text-white flex items-center justify-center shadow-lg hover:bg-civic-primary/90 transition-transform hover:scale-105 mb-3">
-                          <Mic size={28} />
-                        </button>
-                      ) : (
-                        <div className="flex flex-col items-center">
-                          <div className="text-red-500 font-bold mb-3 animate-pulse flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-red-500"></span> Recording... 00:${recordingTime.toString().padStart(2, '0')}
-                          </div>
-                          <button onClick={stopRecording} className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center shadow-md hover:bg-red-200 transition-transform hover:scale-105 mb-3">
-                            <Square size={24} fill="currentColor" />
-                          </button>
-                        </div>
-                      )}
-                      <p className="text-sm text-civic-muted">Max 60 seconds</p>
-                    </div>
-                  ) : (
-                    <div className="bg-brand-50 border border-brand-200 rounded-xl p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
-                          <CheckCircle2 size={20} />
-                        </div>
-                        <div>
-                          <p className="font-bold text-sm text-civic-text">Voice recording ready</p>
-                          <p className="text-xs text-civic-muted">00:${recordingTime.toString().padStart(2, '0')} duration</p>
-                        </div>
+                  {/* Transcribed state */}
+                  {voiceState === 'TRANSCRIBED' && (
+                    <div className="mt-3 bg-white border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-2xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {detectedLanguage && (
+                          <span className="text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60 px-2.5 py-1 rounded-full">
+                            Detected: {detectedLanguage}
+                          </span>
+                        )}
+                        <span className="text-xs text-slate-500">
+                          Added to description field above. You can edit it freely before submitting.
+                        </span>
                       </div>
-                      <div className="flex gap-2">
-                        <audio src={voiceUrl!} controls className="hidden" id="audioPlayer" />
-                        <button onClick={() => {
-                          const audio = document.getElementById('audioPlayer') as HTMLAudioElement;
-                          audio.play();
-                        }} className="p-2 rounded-lg bg-white border border-brand-200 text-civic-text hover:bg-brand-50">
-                          <Play size={18} />
-                        </button>
-                        <button onClick={deleteRecording} className="p-2 rounded-lg bg-white border border-red-200 text-red-500 hover:bg-red-50">
-                          <Trash2 size={18} />
-                        </button>
+
+                      <button
+                        type="button"
+                        onClick={handleRecordAgain}
+                        className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <RefreshCw size={12} /> Record Again
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Error state options with Try Again and Type Manually */}
+                  {voiceState === 'ERROR' && (
+                    <div className="mt-3 bg-red-50/80 border border-red-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={15} className="text-red-600 shrink-0" />
+                        <span className="text-xs text-red-700 font-medium">{voiceErrorMessage || "Voice transcription is unavailable."}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button 
+                          type="button" 
+                          onClick={handleRecordAgain} 
+                          size="sm" 
+                          variant="outline" 
+                          className="text-xs h-8 border-red-200 text-red-700 hover:bg-red-100 font-bold"
+                        >
+                          Try Again
+                        </Button>
+                        <Button 
+                          type="button" 
+                          onClick={() => {
+                            setVoiceState('IDLE');
+                            setVoiceErrorMessage('');
+                            const el = document.getElementById('issue-description-input');
+                            if (el) el.focus();
+                          }} 
+                          size="sm" 
+                          variant="ghost" 
+                          className="text-xs h-8 text-slate-500 hover:text-slate-900 font-semibold"
+                        >
+                          Type Manually
+                        </Button>
                       </div>
                     </div>
                   )}
-                  {voiceTranscript && (
-                    <div className="mt-3 bg-white border border-brand-100 p-3 rounded-lg">
-                      <span className="text-[10px] uppercase font-bold text-civic-muted block mb-1">Live Transcript:</span>
-                      <p className="text-sm text-civic-text italic">"${voiceTranscript}"</p>
-                    </div>
-                  )}
+
+                  {/* Privacy / Engine Notice */}
+                  <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-slate-500 bg-white border border-slate-200/70 rounded-lg px-2.5 py-1.5">
+                    <Info size={13} className="text-blue-600 shrink-0" />
+                    <span>Voice transcription uses your browser's speech recognition.</span>
+                  </div>
                 </div>
+              </VoiceErrorBoundary>
+
+                {!category && <p className="text-xs text-amber-600 mt-2 font-medium">Please select a category</p>}
+                {!description.trim() && category && <p className="text-xs text-amber-600 mt-2 font-medium">Please enter or record an issue description</p>}
               </div>
-              
-              <div className="flex justify-end mt-6 pt-4 border-t border-brand-100">
-                <Button onClick={() => setStep(3)} disabled={!canProceedStep2} size="lg" className="px-8">
+
+              <div className="flex justify-end mt-auto pt-4 border-t border-slate-100">
+                <Button 
+                  onClick={() => {
+                    if (voiceState === 'RECORDING') stopRecording();
+                    setStep(2);
+                  }} 
+                  disabled={!category || !description.trim() || description.trim().length < 5} 
+                  size="lg" 
+                  className="px-8 font-bold"
+                >
                   Continue <ChevronRight size={18} className="ml-1" />
                 </Button>
               </div>
             </motion.div>
           )}
 
+          {/* STEP 2: URGENCY */}
+          {step === 2 && (
+            <motion.div key="step2" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
+              <div className="mb-4">
+                <button onClick={() => setStep(1)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+                  <ChevronLeft size={16} className="mr-1" /> Back
+                </button>
+              </div>
+              <PageHeader 
+                title="Urgency Level" 
+                description="How urgently should this civic issue be addressed?" 
+                className="mb-6"
+              />
+              
+              <div className="flex flex-col gap-3 flex-1 mb-8">
+                {[
+                  { id: 'URGENT', icon: '🚨', title: 'URGENT', desc: 'Immediate attention required — safety risk or serious public hazard', activeColor: 'border-red-500 bg-red-50/70 text-red-900 ring-2 ring-red-500/20' },
+                  { id: 'HIGH', icon: '⚠️', title: 'HIGH', desc: 'Should be addressed as soon as possible', activeColor: 'border-amber-500 bg-amber-50/70 text-amber-900 ring-2 ring-amber-500/20' },
+                  { id: 'MODERATE', icon: '⚡', title: 'MODERATE', desc: 'Needs attention but does not pose an immediate danger', activeColor: 'border-blue-500 bg-blue-50/70 text-blue-900 ring-2 ring-blue-500/20' },
+                  { id: 'LOW', icon: '🌱', title: 'LOW', desc: 'Minor issue that can be addressed during routine maintenance', activeColor: 'border-emerald-500 bg-emerald-50/70 text-emerald-900 ring-2 ring-emerald-500/20' }
+                ].map(u => {
+                  const isSelected = urgency === u.id;
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => setUrgency(u.id as Urgency)}
+                      className={cn(
+                        "flex items-start text-left p-4 rounded-2xl border transition-all duration-180 hover:-translate-y-0.5 focus:outline-none cursor-pointer",
+                        isSelected 
+                          ? cn(u.activeColor, "shadow-xs font-semibold") 
+                          : "border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-[0_4px_20px_rgba(15,23,42,0.04)]"
+                      )}
+                    >
+                      <span className="text-2xl mr-3.5 select-none">{u.icon}</span>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-900 mb-0.5 text-sm tracking-wide">{u.title}</h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">{u.desc}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              
+              <div className="flex justify-end mt-auto pt-4 border-t border-slate-100">
+                <Button onClick={() => setStep(3)} disabled={!urgency} size="lg" className="px-8 font-bold">
+                  Continue <ChevronRight size={18} className="ml-1" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* STEP 3: EVIDENCE */}
           {step === 3 && (
             <motion.div key="step3" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
-                <button onClick={() => setStep(2)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
+                <button onClick={() => setStep(2)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </button>
               </div>
               <PageHeader 
                 title="Provide Evidence" 
-                description="Upload a mandatory photo to help AI assess severity." 
+                description="Upload a photo to help AI assess severity and verify the report." 
                 className="mb-6"
               />
               
               <div className="flex-1 flex flex-col items-center justify-center mb-8">
                 {photo ? (
                   <div className="w-full max-w-md mx-auto relative group">
-                    <img src={photo} alt="Issue evidence" className="w-full h-64 object-cover rounded-xl border border-brand-200" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-xl">
-                      <label className="bg-white text-civic-text px-4 py-2 rounded-lg font-medium cursor-pointer hover:bg-brand-50">
-                        Replace
+                    <img src={photo} alt="Issue evidence" className="w-full h-64 object-cover rounded-2xl border border-slate-200/80 shadow-xs" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 rounded-2xl backdrop-blur-xs">
+                      <label className="bg-white text-slate-900 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-100 shadow-md">
+                        Replace Photo
                         <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
                       </label>
-                      <button onClick={handleRemovePhoto} className="bg-civic-danger text-white px-4 py-2 rounded-lg font-medium hover:bg-civic-danger/90">
+                      <button onClick={handleRemovePhoto} className="bg-red-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-red-700 shadow-md cursor-pointer">
                         Remove
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <label className="w-full max-w-md mx-auto h-64 border-2 border-dashed border-brand-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-brand-50 transition-colors bg-white group">
-                    <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center text-brand-400 mb-4 group-hover:scale-110 transition-transform group-hover:bg-civic-primary group-hover:text-white">
-                      {isCompressing ? <Loader2 className="animate-spin" size={32} /> : <Camera size={32} />}
+                  <label className="flex flex-col items-center justify-center w-full max-w-md h-64 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50/50 hover:bg-slate-100/60 hover:border-slate-400 cursor-pointer transition-all duration-180 group">
+                    <div className="w-14 h-14 bg-white shadow-xs text-slate-700 rounded-2xl flex items-center justify-center mb-3 group-hover:scale-105 border border-slate-200 transition-transform">
+                      <Camera size={26} className="text-slate-700" />
                     </div>
-                    <span className="font-bold text-civic-text mb-1">
-                      {isCompressing ? 'Processing image...' : 'Tap to upload photo'}
-                    </span>
-                    <span className="text-xs text-civic-muted text-center max-w-[200px]">
-                      Mandatory evidence required.
-                    </span>
-                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePhotoUpload} disabled={isCompressing} />
+                    <span className="font-bold text-slate-900 text-sm mb-1">Take Photo / Upload Evidence *</span>
+                    <span className="text-xs text-slate-400">JPG, PNG, WEBP (Max 5MB compressed)</span>
+                    {isCompressing ? (
+                      <Loader2 className="animate-spin text-blue-600 mt-3" size={24} />
+                    ) : (
+                      <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                    )}
                   </label>
                 )}
+                {!photo && <p className="text-xs text-amber-600 mt-2 font-medium">Please upload a photo of the issue to proceed</p>}
               </div>
               
-              <div className="flex justify-end mt-auto pt-4 border-t border-brand-100">
-                <Button onClick={() => setStep(4)} disabled={!photo} size="lg" className="px-8">
+              <div className="flex justify-end mt-auto pt-4 border-t border-slate-100">
+                <Button onClick={() => setStep(4)} disabled={!photo} size="lg" className="px-8 font-bold">
                   Continue <ChevronRight size={18} className="ml-1" />
                 </Button>
               </div>
             </motion.div>
           )}
 
+          {/* STEP 4: LOCATION (Interactive Leaflet Map + Satellite + Search) */}
           {step === 4 && (
             <motion.div key="step4" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
-                <button onClick={() => setStep(3)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
+                <button onClick={() => setStep(3)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </button>
               </div>
-              <PageHeader 
-                title="Urgency" 
-                description="How urgently should this issue be addressed?" 
-                className="mb-6"
-              />
               
-              <div className="flex flex-col gap-3 flex-1 mb-8">
-                {[
-                  { id: 'URGENT', icon: '🔴', title: 'URGENT', desc: 'Immediate attention required — safety risk or serious public impact', color: 'border-red-200 bg-red-50 text-red-700' },
-                  { id: 'HIGH', icon: '🟠', title: 'HIGH', desc: 'Should be addressed as soon as possible', color: 'border-orange-200 bg-orange-50 text-orange-700' },
-                  { id: 'MODERATE', icon: '🟡', title: 'MODERATE', desc: 'Needs attention but does not require immediate action', color: 'border-yellow-200 bg-yellow-50 text-yellow-700' },
-                  { id: 'LOW', icon: '🟢', title: 'LOW', desc: 'Minor issue that can be addressed during routine maintenance', color: 'border-green-200 bg-green-50 text-green-700' }
-                ].map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => setUrgency(u.id as Urgency)}
-                    className={cn(
-                      "flex items-start text-left p-4 rounded-xl border-2 transition-all hover:-translate-y-1 focus:outline-none",
-                      urgency === u.id ? cn(u.color, "border-opacity-100 shadow-sm") : "border-brand-200 bg-white hover:bg-brand-50"
-                    )}
-                  >
-                    <span className="text-2xl mr-3">{u.icon}</span>
-                    <div>
-                      <h4 className="font-bold text-civic-text mb-1">{u.title}</h4>
-                      <p className="text-sm text-civic-muted">{u.desc}</p>
-                    </div>
-                  </button>
-                ))}
+              <div className="flex flex-col mb-4">
+                <PageHeader 
+                  title="Exact Location" 
+                  description="Search a place, drop a pin, drag the marker, or use GPS to set the incident location." 
+                  className="mb-4"
+                />
+                
+                {/* Search Bar */}
+                <form onSubmit={handleSearchLocation} className="flex bg-white rounded-xl shadow-xs border border-slate-200/80 overflow-hidden mb-2 relative focus-within:border-slate-900 transition-colors">
+                  <div className="flex items-center pl-3 text-slate-400">
+                    <MapPin size={16} />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search location (e.g. Omega City Kharar, Chandigarh University)..."
+                    className="flex-1 px-3 py-2.5 text-xs sm:text-sm focus:outline-none bg-transparent text-slate-900 placeholder:text-slate-400"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onFocus={() => {
+                      if (searchSuggestions.length > 0) setIsSuggestionsOpen(true);
+                    }}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSearchSuggestions([]);
+                        setIsSuggestionsOpen(false);
+                      }}
+                      className="px-2 text-slate-400 hover:text-slate-900 cursor-pointer"
+                      title="Clear search"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                  <Button type="submit" disabled={isSearchingLocation} variant="ghost" className="rounded-none border-l border-slate-100 px-4 text-xs font-bold text-blue-600">
+                    {isSearchingLocation ? <Loader2 size={14} className="animate-spin" /> : "Search"}
+                  </Button>
+                </form>
+                
+                {/* Live Loading Banner */}
+                {isSearchingLocation && (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-xs mb-4 p-3 text-xs text-slate-500 flex items-center justify-center">
+                    <Loader2 size={15} className="animate-spin mr-2 text-blue-600" /> Searching locations...
+                  </div>
+                )}
+                
+                {/* Search Error State */}
+                {!isSearchingLocation && searchLocationError && (
+                  <div className="bg-white border border-amber-200 rounded-xl shadow-xs mb-4 p-3 text-xs text-amber-700 text-center">
+                    {searchLocationError}
+                  </div>
+                )}
+
+                {/* No Locations Found State */}
+                {!isSearchingLocation && !searchLocationError && hasSearchedLocation && searchQuery.trim().length >= 2 && searchSuggestions.length === 0 && (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-xs mb-4 p-3 text-xs text-slate-500 text-center">
+                    No locations found. Try adding a city or landmark.
+                  </div>
+                )}
+
+                {/* Suggestions Dropdown Card */}
+                {!isSearchingLocation && isSuggestionsOpen && searchSuggestions.length > 0 && (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-lg mb-4 max-h-56 overflow-y-auto divide-y divide-slate-100 z-50">
+                    {searchSuggestions.map((item, idx) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={cn(
+                          "w-full text-left p-3 hover:bg-slate-50 transition-colors flex items-start gap-2.5 focus:outline-none cursor-pointer",
+                          highlightedIndex === idx ? "bg-slate-50 ring-1 ring-inset ring-slate-900" : ""
+                        )}
+                        onClick={() => handleSelectSuggestion(item)}
+                        onMouseEnter={() => setHighlightedIndex(idx)}
+                      >
+                        <MapPin size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-slate-900 text-xs sm:text-sm truncate">
+                            {item.placeName}
+                          </div>
+                          {item.secondaryAddress && (
+                            <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                              {item.secondaryAddress}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               
-              <div className="flex justify-end mt-auto pt-4 border-t border-brand-100">
-                <Button onClick={() => setStep(5)} disabled={!urgency} size="lg" className="px-8">
-                  Continue <ChevronRight size={18} className="ml-1" />
+              {/* Interactive Map Container */}
+              <div className={cn("rounded-2xl border border-slate-200/80 h-72 mb-4 relative overflow-hidden bg-slate-100 shadow-xs", isDropPinMode ? "ring-2 ring-slate-900 cursor-crosshair" : "")}>
+                {coordinates ? (
+                  <>
+                    <MapContainer 
+                      center={[coordinates.lat, coordinates.lng]} 
+                      zoom={16} 
+                      maxZoom={21} 
+                      style={{ height: '100%', width: '100%', zIndex: 1 }}
+                    >
+                      {mapMode === 'satellite' ? (
+                        <TileLayer 
+                          key="satellite" 
+                          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" 
+                          maxZoom={21} 
+                          attribution="Tiles &copy; Esri" 
+                        />
+                      ) : (
+                        <TileLayer 
+                          key="street" 
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+                          maxZoom={19} 
+                          attribution='&copy; OpenStreetMap' 
+                        />
+                      )}
+                      
+                      <MapViewport coordinates={coordinates} />
+                      <MapClickHandler onLocationSelect={handleMapClick} active={isDropPinMode} />
+                      
+                      {/* Draggable Marker */}
+                      <Marker 
+                        position={[coordinates.lat, coordinates.lng]} 
+                        draggable={true}
+                        eventHandlers={{
+                          dragend: (e) => {
+                            const marker = e.target;
+                            const position = marker.getLatLng();
+                            setCoordinates({ lat: position.lat, lng: position.lng });
+                            setLocationSource('Manual');
+                            setLocationStr('Fetching address...');
+                            reverseGeocode(position.lat, position.lng);
+                          }
+                        }}
+                      />
+                      <Circle center={[coordinates.lat, coordinates.lng]} radius={80} pathOptions={{ color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.15 }} />
+                    </MapContainer>
+
+                    {/* Satellite / Street Mode Switcher */}
+                    <div className="absolute left-3 top-3 z-[500] flex overflow-hidden rounded-xl border border-white/80 bg-white/95 backdrop-blur-md shadow-md">
+                      <button 
+                        type="button" 
+                        onClick={() => setMapMode('street')} 
+                        className={cn("flex items-center gap-1 px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer", mapMode === 'street' ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100")}
+                      >
+                        Map
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => setMapMode('satellite')} 
+                        className={cn("flex items-center gap-1 border-l border-slate-200 px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer", mapMode === 'satellite' ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100")}
+                      >
+                        <Layers3 size={13} /> Satellite
+                      </button>
+                    </div>
+
+                    {/* Instruction Tag */}
+                    <div className="pointer-events-none absolute bottom-2 left-2 z-[400] rounded-lg bg-slate-900/80 backdrop-blur-xs px-2.5 py-1 text-[11px] font-medium text-white shadow">
+                      {isDropPinMode ? '📍 Tap anywhere on the map to place the pin' : '👆 Drag marker or tap Drop Pin to adjust'}
+                    </div>
+                  </>
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-700">
+                    <Loader2 size={32} className="animate-spin mb-2 text-blue-600" />
+                    <p className="text-sm font-medium">Acquiring Location...</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Location Summary Box */}
+              <div className="flex flex-col gap-2 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200/60">
+                    <MapPin size={16} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs sm:text-sm font-semibold text-slate-900 truncate">{locationStr}</div>
+                    {coordinates && (
+                      <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                        Lat: {coordinates.lat.toFixed(5)} • Lng: {coordinates.lng.toFixed(5)} ({locationSource})
+                      </div>
+                    )}
+                  </div>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={fetchLiveLocation} 
+                    disabled={isLocating}
+                    title="Get live GPS location"
+                    className="flex items-center gap-1 text-xs font-bold"
+                  >
+                    {isLocating ? <Loader2 size={14} className="animate-spin" /> : <Crosshair size={14} />} GPS
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="mt-auto flex justify-between items-center pt-4 border-t border-slate-100">
+                <Button 
+                  type="button" 
+                  variant={isDropPinMode ? "primary" : "outline"} 
+                  onClick={handleManualLocation} 
+                  size="lg"
+                  className={cn(isDropPinMode ? "bg-amber-600 hover:bg-amber-700 text-white" : "")}
+                >
+                  📍 {isDropPinMode ? "Click Map to Pin" : "Drop Pin"}
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setStep(5);
+                    runAnalysis();
+                  }} 
+                  disabled={!coordinates || isAnalyzing} 
+                  size="lg" 
+                  className="px-8 shadow-xs font-bold"
+                >
+                  {isAnalyzing ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 size={18} className="animate-spin" /> Analyzing...
+                    </div>
+                  ) : (
+                    <>Continue to Review <ChevronRight size={18} className="ml-1" /></>
+                  )}
                 </Button>
               </div>
             </motion.div>
           )}
 
+          {/* STEP 5: REVIEW & AI ANALYSIS */}
           {step === 5 && (
             <motion.div key="step5" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
-                <button onClick={() => setStep(4)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
+                <button onClick={() => setStep(4)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </button>
               </div>
-              <PageHeader 
-                title="Location" 
-                description="Where is this issue located?" 
-                className="mb-6"
-              />
               
-              <div className="flex-1 flex flex-col min-h-0">
-                <div className="flex gap-2 mb-4">
-                  <button onClick={fetchLiveLocation} className={cn("flex-1 py-2 px-3 rounded-lg text-sm font-medium border flex items-center justify-center gap-2 transition-colors", locationSource === 'GPS' ? "bg-civic-primary text-white border-civic-primary" : "bg-white text-civic-text border-brand-200 hover:bg-brand-50")}>
-                    <MapPin size={16} /> Current Location
-                  </button>
-                  <button onClick={handleManualLocation} className={cn("flex-1 py-2 px-3 rounded-lg text-sm font-medium border flex items-center justify-center gap-2 transition-colors", isDropPinMode ? "bg-civic-primary text-white border-civic-primary animate-pulse" : locationSource === 'Manual' ? "bg-civic-primary text-white border-civic-primary" : "bg-white text-civic-text border-brand-200 hover:bg-brand-50")}>
-                    <Crosshair size={16} /> Drop Pin
-                  </button>
-                </div>
+              <PageHeader 
+                title="Review & Contact" 
+                description="Review your civic report details and add contact information for progress updates." 
+                className="mb-4"
+              />
 
-                <div className="relative mb-4">
-                  <div className="flex bg-white rounded-lg shadow-md border border-brand-200 overflow-hidden z-[1000] relative">
-                    <div className="bg-brand-50 p-3 text-civic-primary border-r border-brand-100">
-                      <Search size={20} />
+              <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1">
+                {/* Issue Summary Card */}
+                <div className="border border-slate-200/80 rounded-2xl p-5 bg-white shadow-xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <span className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                      <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold uppercase">{category}</span>
+                    </span>
+                    <PriorityBadge priority={urgency || 'MODERATE'} size="sm" />
+                  </div>
+
+                  {/* Photo & Description */}
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    {photo && (
+                      <div className="sm:col-span-1 h-28 rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                        <img src={photo} alt="Report evidence" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    <div className={cn(photo ? "sm:col-span-3" : "sm:col-span-4", "flex flex-col")}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Issue Description</span>
+                        <div className="flex items-center gap-2">
+                          {hasUsedVoice && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200/60 px-2 py-0.5 rounded-full">
+                              <Mic size={11} /> Voice Transcribed
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingReviewDesc(!isEditingReviewDesc)}
+                            className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+                            title="Edit Description"
+                          >
+                            <Edit3 size={13} /> {isEditingReviewDesc ? 'Done Editing' : 'Edit Description'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isEditingReviewDesc ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={description}
+                            onChange={(e) => {
+                              setDescription(e.target.value);
+                              updateReportDraft({ description: e.target.value });
+                            }}
+                            placeholder="Description of the issue..."
+                            className="w-full p-3 text-sm text-slate-900 border border-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-900 resize-y min-h-[95px] bg-white leading-relaxed font-normal shadow-inner"
+                            autoFocus
+                          />
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-slate-400">Readable transcript. Fully editable.</span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => {
+                                setIsEditingReviewDesc(false);
+                                runAnalysis(description);
+                              }}
+                              className="text-xs h-7 px-3 font-bold"
+                            >
+                              Save & Re-analyze AI
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
+                          {description ? (
+                            description
+                          ) : (
+                            <span className="italic text-slate-400">No description provided.</span>
+                          )}
+                        </div>
+                      )}
+                      <p className="text-[10px] text-slate-400 mt-1.5">
+                        Transcript is the primary description used for AI triage and department routing.
+                      </p>
                     </div>
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      placeholder="Search for an address or landmark..."
-                      className="flex-1 p-3 text-sm focus:outline-none"
-                    />
+                  </div>
+
+                  {/* Location Info */}
+                  <div className="pt-3 border-t border-slate-100 flex items-start gap-2.5 text-xs text-slate-500">
+                    <MapPin size={15} className="mt-0.5 flex-shrink-0 text-blue-600" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-slate-900 text-sm">{locationStr}</div>
+                      {coordinates && (
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          Coordinates: {coordinates.lat.toFixed(5)}, {coordinates.lng.toFixed(5)} ({locationSource})
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {isDropPinMode && (
-                  <div className="bg-civic-primary/10 border border-civic-primary/20 text-civic-primary text-sm font-medium p-3 rounded-lg mb-4 flex items-center justify-center animate-pulse text-center">
-                    Drop Pin Mode: Click anywhere on the map to select the issue location.
+                {/* Optional Contact Inputs */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-bold text-[11px] text-slate-500 uppercase tracking-wider">Contact for Updates (Optional)</h4>
+                    <span className="text-[10px] text-slate-400">Kept private & secure</span>
                   </div>
-                )}
-
-                <div className="w-full h-[250px] bg-brand-100 rounded-xl overflow-hidden relative border border-brand-200 mb-4 z-0">
-                  <Map 
-                    defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
-                    center={coordinates || { lat: 30.7333, lng: 76.7794 }}
-                    defaultZoom={13}
-                    mapId="civicpulse_report_map"
-                    mapTypeControl={true}
-                    streetViewControl={true}
-                    fullscreenControl={true}
-                    zoomControl={true}
-                    onClick={(e) => {
-                      if ((isDropPinMode || locationSource === 'Manual') && e.detail.latLng) {
-                        handleMapClick(e.detail.latLng.lat, e.detail.latLng.lng);
-                      }
-                    }}
-                  >
-                    {coordinates && (
-                      <AdvancedMarker 
-                        position={coordinates}
-                        draggable={true}
-                        onDragEnd={(e) => {
-                          if (e.latLng) {
-                            handleMapClick(e.latLng.lat(), e.latLng.lng());
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-xs font-semibold text-slate-700">Phone Number</label>
+                        <span className="text-[10px] text-slate-400">10 digits</span>
+                      </div>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={10}
+                        placeholder="10-digit mobile number"
+                        className={cn(
+                          "w-full p-2.5 border rounded-xl focus:outline-none focus:ring-1 text-sm bg-white font-mono",
+                          phoneError ? "border-red-400 focus:ring-red-400 ring-1 ring-red-400" : "border-slate-200 focus:ring-slate-900"
+                        )}
+                        value={contactPhone}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setContactPhone(digitsOnly);
+                          if (digitsOnly.length > 0 && digitsOnly.length < 10) {
+                            setPhoneError('Mobile number must contain 10 digits.');
+                          } else {
+                            setPhoneError('');
                           }
                         }}
-                      >
-                         <div style={{ backgroundColor: '#3b82f6', width: '20px', height: '20px', borderRadius: '50%', border: '3px solid white', boxShadow: '0 0 4px rgba(0,0,0,0.4)' }}></div>
-                      </AdvancedMarker>
-                    )}
-                  </Map>
-                  
-                  {isLocating && !searchQuery && (
-                    <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-[400] flex flex-col items-center justify-center">
-                      <Loader2 className="animate-spin text-civic-primary mb-2" size={32} />
-                      <span className="font-bold text-civic-primary">Fetching location...</span>
+                        onBlur={() => {
+                          if (contactPhone.length > 0 && contactPhone.length < 10) {
+                            setPhoneError('Mobile number must contain 10 digits.');
+                          } else {
+                            setPhoneError('');
+                          }
+                        }}
+                      />
+                      {phoneError && (
+                        <p className="text-xs text-red-600 mt-1 font-medium">{phoneError}</p>
+                      )}
                     </div>
-                  )}
-                </div>
-
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex items-start gap-3 mt-auto">
-                  <MapPin className="text-civic-primary shrink-0 mt-0.5" size={20} />
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm">Selected Location</h4>
-                    <p className="text-sm text-civic-muted leading-tight mt-1">{locationStr}</p>
-                    {coordinates && (
-                      <p className="text-xs text-brand-400 mt-2 font-mono">Lat: {coordinates.lat.toFixed(6)} | Lng: {coordinates.lng.toFixed(6)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex justify-end mt-4 pt-4 border-t border-brand-100">
-                <Button onClick={() => setStep(6)} disabled={!coordinates} size="lg" className="px-8">
-                  Continue <ChevronRight size={18} className="ml-1" />
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {step === 6 && (
-            <motion.div key="step6" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
-              <div className="mb-4">
-                <button onClick={() => setStep(5)} className="flex items-center text-sm font-medium text-civic-muted hover:text-civic-primary transition-colors">
-                  <ChevronLeft size={16} className="mr-1" /> Back
-                </button>
-              </div>
-              <PageHeader 
-                title="Contact Info (Optional)" 
-                description="Allow departments to reach you for updates." 
-                className="mb-6"
-              />
-              
-              <div className="flex-1 flex flex-col gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-civic-text mb-2">Phone Number</label>
-                  <input
-                    type="tel"
-                    className="w-full p-3 border border-brand-200 rounded-lg bg-white text-civic-text focus:border-civic-primary focus:ring-1 focus:ring-civic-primary outline-none"
-                    placeholder="+91 98765 43210"
-                    value={contactPhone}
-                    onChange={e => setContactPhone(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-civic-text mb-2">Email Address</label>
-                  <input
-                    type="email"
-                    className="w-full p-3 border border-brand-200 rounded-lg bg-white text-civic-text focus:border-civic-primary focus:ring-1 focus:ring-civic-primary outline-none"
-                    placeholder="citizen@example.com"
-                    value={contactEmail}
-                    onChange={e => setContactEmail(e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div className="flex justify-end mt-auto pt-4 border-t border-brand-100">
-                <Button onClick={() => setStep(7)} size="lg" className="px-8">
-                  Review Report <ChevronRight size={18} className="ml-1" />
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {step === 7 && (
-            <motion.div key="step7" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1 overflow-y-auto pr-2">
-              <PageHeader 
-                title="Review Your Report" 
-                description="Please verify the details before AI analysis." 
-                className="mb-6"
-              />
-              
-              <div className="space-y-4 mb-8">
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-1">Issue Category</h4>
-                    <p className="font-medium text-civic-text">{category}</p>
-                  </div>
-                  <button onClick={() => setStep(1)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
-                </div>
-
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div className="flex-1">
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Description</h4>
-                    {description.trim() ? (
-                      <p className="text-sm text-civic-muted italic">"{description}"</p>
-                    ) : (
-                      <p className="text-sm text-civic-muted italic flex items-center gap-2">
-                        <Mic size={16} /> Voice Recording Attached
-                        {voiceTranscript && <span className="block mt-1 text-xs text-brand-500">Transcript: "{voiceTranscript}"</span>}
-                      </p>
-                    )}
-                  </div>
-                  <button onClick={() => setStep(2)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
-                </div>
-
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Photo</h4>
-                    {photo ? (
-                      <img src={photo} className="h-20 w-32 object-cover rounded-lg border border-brand-200" alt="Preview" />
-                    ) : (
-                      <p className="text-sm font-medium text-red-500">Missing</p>
-                    )}
-                  </div>
-                  <button onClick={() => setStep(3)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
-                </div>
-
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Location</h4>
-                    <p className="text-sm text-civic-muted font-medium mb-1 line-clamp-2">{locationStr}</p>
-                    {coordinates && <p className="text-[10px] text-brand-400 font-mono">LAT: {coordinates.lat.toFixed(6)} | LNG: {coordinates.lng.toFixed(6)}</p>}
-                  </div>
-                  <button onClick={() => setStep(5)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
-                </div>
-                
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-1">Urgency</h4>
-                    <p className="text-sm font-bold text-civic-primary">{urgency}</p>
-                  </div>
-                  <button onClick={() => setStep(4)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
-                </div>
-
-                <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-bold text-civic-text text-sm uppercase tracking-wider mb-2">Contact Info</h4>
-                    <p className="text-sm text-civic-muted">{contactPhone ? `Phone: ${contactPhone}` : 'Phone: Not provided'}</p>
-                    <p className="text-sm text-civic-muted">{contactEmail ? `Email: ${contactEmail}` : 'Email: Not provided'}</p>
-                  </div>
-                  <button onClick={() => setStep(6)} className="text-civic-primary hover:text-brand-600 flex items-center text-sm font-medium transition-colors p-2 -m-2">
-                    <Edit2 size={14} className="mr-1" /> Edit
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-brand-100 pb-2">
-                <Button onClick={getAIAnalysis} disabled={isAnalyzing} size="lg" className="w-full shadow-lg h-14 relative overflow-hidden">
-                  Run AI Analysis & Verify
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {step === 'AI_LOADING' as any && (
-            <motion.div key="ai_loading" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col items-center justify-center h-full py-16 text-center">
-               <Loader2 className="animate-spin text-civic-primary mb-6" size={48} />
-               <h3 className="text-xl font-bold text-civic-text">Analyzing Report...</h3>
-               <p className="text-civic-muted mt-2">Our AI is verifying category, severity, and checking for duplicates.</p>
-            </motion.div>
-          )}
-
-          {step === 'AI_REVIEW' as any && aiResult && (
-            <motion.div key="ai_review" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
-              <PageHeader 
-                title="AI Analysis Complete" 
-                description="Please review the automated assessment before final submission." 
-                className="mb-6"
-              />
-              
-              <div className="bg-white border-2 border-brand-200 rounded-xl p-6 mb-8 w-full text-left shadow-lg overflow-hidden relative">
-                <div className="absolute top-0 left-0 w-full h-1 bg-civic-primary"></div>
-                
-                <div className="grid grid-cols-2 gap-y-4 gap-x-6 mb-4">
-                  <div>
-                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Category</span>
-                    <span className="font-semibold text-civic-text text-sm">{aiResult.detectedCategory}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Severity</span>
-                    <span className={cn(
-                      "font-bold text-xs px-2 py-1 rounded inline-block",
-                      aiResult.severity === 'HIGH' || aiResult.severity === 'CRITICAL' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'
-                    )}>
-                      {aiResult.severity}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Priority Score</span>
-                    <span className="font-black text-civic-primary text-sm">{aiResult.priorityScore}/100</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Suggested Dept</span>
-                    <span className="font-semibold text-civic-text text-sm">{aiResult.suggestedDepartment}</span>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+                      <input
+                        type="email"
+                        placeholder="e.g. citizen@example.com"
+                        className="w-full p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-900 text-sm bg-white"
+                        value={contactEmail}
+                        onChange={(e) => setContactEmail(e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div className="border-t border-brand-100 pt-4 mb-4">
-                  <span className="text-[10px] text-civic-muted uppercase font-bold tracking-wider block mb-1">Reasoning</span>
-                  <p className="text-xs text-civic-text italic bg-brand-50 p-2 rounded">
-                    "Calculated based on {aiResult.priorityReasoning.map(r => r.factor.toLowerCase()).join(', ')} resulting in {aiResult.priorityScore} priority points."
-                  </p>
-                </div>
-                
-                {duplicateData?.isDuplicate && (
-                  <div className="bg-red-50 p-3 rounded border border-red-200 mb-4">
-                    <span className="text-[10px] text-red-600 uppercase font-bold tracking-wider block mb-1 flex items-center gap-1"><AlertTriangle size={12}/> Possible Duplicate Found</span>
-                    <p className="text-xs text-red-800">This issue appears very similar to {duplicateData.relatedIssues.length} nearby report(s). It will be linked for authority review.</p>
+                {/* Storage Error Fallback */}
+                {storageError && (
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                    <div className="flex items-start gap-3 mb-2">
+                      <AlertTriangle className="text-red-600 mt-0.5" size={20} />
+                      <div>
+                        <h4 className="font-bold text-red-700 text-sm">Storage Limit Notice</h4>
+                        <p className="text-sm text-slate-700 mt-1">
+                          Local prototype storage is full. You can proceed without the attached image.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <Button onClick={() => { setPhoto(null); setStorageError(false); handleSubmit(); }} className="text-xs bg-red-600 hover:bg-red-700 text-white">
+                        Submit Without Image
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
-              
-              <div className="flex flex-col sm:flex-row gap-3 mt-auto pt-4 border-t border-brand-100">
-                <Button onClick={() => setStep(7)} variant="outline" className="flex-1 text-brand-600 border-brand-200">
-                  Edit Report
-                </Button>
-                <Button onClick={handleSubmit} className="flex-1">
-                  Submit Final Report
+
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <Button onClick={handleSubmit} size="lg" className="w-full shadow-md h-12 text-sm font-bold">
+                  Submit Report to CivicPulse
                 </Button>
               </div>
             </motion.div>
           )}
 
-          {step === 8 && (
-            <motion.div key="step8" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col items-center justify-center h-full py-16 text-center">
-              <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
-                <CheckCircle2 size={40} />
+          {/* STEP 6: SUBMIT SUCCESS & AI VERIFICATION */}
+          {step === 6 && (
+            <motion.div key="step6" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col items-center justify-center h-full py-8 text-center">
+              <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-200/60 flex items-center justify-center mb-4 shadow-xs">
+                <CheckCircle2 size={36} />
               </div>
-              <h2 className="text-2xl font-bold text-civic-text mb-2">Civic issue submitted successfully.</h2>
-              <p className="text-civic-muted mb-8 font-mono bg-brand-50 px-4 py-2 rounded border border-brand-200">Issue ID: CP-XXXX</p>
+              <h2 className="text-2xl font-bold text-slate-900 mb-1">Issue Reported Successfully</h2>
+              <p className="text-slate-500 mb-6 font-mono text-xs bg-slate-100 px-3.5 py-1.5 rounded-full border border-slate-200">
+                Incident ID: CP-2026-{Math.floor(1000 + Math.random() * 9000)}
+              </p>
               
-              <div className="flex flex-col gap-3 w-full max-w-sm">
-                <Button onClick={() => navigate('/my-reports')} size="lg" className="w-full">
-                  Track Report
-                </Button>
-                <Button onClick={() => navigate('/')} variant="outline" size="lg" className="w-full">
-                  Back to Home
-                </Button>
-              </div>
+              {aiResult && (
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-6 mb-8 w-full max-w-lg text-left shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden relative">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-slate-900"></div>
+                  <div className="flex items-center justify-between mb-5">
+                    <h4 className="font-bold text-slate-900 text-sm tracking-wide uppercase flex items-center gap-2">
+                      <CheckCircle2 size={18} className="text-emerald-600" /> AI-Assisted Assessment
+                    </h4>
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/60 px-2 py-0.5 rounded-full">
+                      Automated Triage
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-6 mb-4">
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Detected Category</span>
+                      <span className="font-bold text-slate-900 text-sm">{aiResult.detectedCategory}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Priority Level</span>
+                      <PriorityBadge priority={aiResult.severity} score={aiResult.priorityScore} size="sm" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Citizen Urgency</span>
+                      <span className="font-bold text-slate-900 text-sm">{urgency}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Priority Score</span>
+                      <span className="font-bold text-slate-900 text-sm tabular-nums">{aiResult.priorityScore}/100</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">AI Confidence</span>
+                      <span className="font-bold text-slate-900 text-sm tabular-nums">{aiResult.confidence}%</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Status</span>
+                      <span className="font-bold text-blue-700 text-xs bg-blue-50 px-2 py-0.5 rounded-md inline-block">Assigned to Dept</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-3 mb-4">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Priority Factor Reasoning</span>
+                    <p className="text-xs text-slate-700 italic bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
+                      "Calculated based on {aiResult.priorityReasoning.map(r => r.factor.toLowerCase()).join(', ')} resulting in {aiResult.priorityScore} priority points."
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                    <div className="mb-2">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-0.5">Assigned Department</span>
+                      <span className="font-bold text-slate-900 text-sm">🏛️ {aiResult.suggestedDepartment}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-0.5">Target SLA Resolution Time</span>
+                      <span className="font-bold text-slate-900 text-xs bg-white px-2 py-1 rounded-md border border-slate-200 inline-block">
+                        {aiResult.estimatedResolutionTime}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <Button onClick={() => navigate('/my-reports')} size="lg" className="w-full max-w-md shadow-xs font-bold">
+                View My Reports
+              </Button>
             </motion.div>
           )}
         </AnimatePresence>

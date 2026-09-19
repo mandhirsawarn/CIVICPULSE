@@ -16,17 +16,18 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', isLoading, children, disabled, ...props }, ref) => {
     const variants = {
-      primary: 'bg-civic-primary text-white hover:bg-civic-primary/90 shadow-sm',
-      secondary: 'bg-civic-secondary text-white hover:bg-civic-secondary/90 shadow-sm',
-      outline: 'border border-brand-200 bg-white hover:bg-brand-50 text-brand-900',
-      ghost: 'hover:bg-brand-100 text-brand-700',
-      danger: 'bg-civic-danger text-white hover:bg-civic-danger/90 shadow-sm',
+      primary: 'bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-950 shadow-sm hover:shadow transition-all duration-150',
+      secondary: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm hover:shadow transition-all duration-150',
+      outline: 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 shadow-xs hover:border-slate-300 transition-all duration-150',
+      ghost: 'hover:bg-slate-100 text-slate-700 transition-colors duration-150',
+      danger: 'bg-red-600 text-white hover:bg-red-700 shadow-sm transition-all duration-150',
+      success: 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all duration-150',
     };
 
     const sizes = {
       sm: 'h-8 px-3 text-xs',
-      md: 'h-10 px-4 py-2',
-      lg: 'h-12 px-8 text-lg',
+      md: 'h-10 px-4 py-2 text-sm',
+      lg: 'h-11 px-6 text-base font-semibold',
       icon: 'h-10 w-10',
     };
 
@@ -35,7 +36,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || isLoading}
         className={cn(
-          'inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-civic-primary disabled:pointer-events-none disabled:opacity-50',
+          'inline-flex items-center justify-center rounded-xl font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 select-none cursor-pointer',
           variants[variant],
           sizes[size],
           className
