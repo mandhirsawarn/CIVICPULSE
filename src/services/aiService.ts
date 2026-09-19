@@ -79,49 +79,50 @@ const SEVERITY_INDICATORS = {
 };
 
 const DEPARTMENT_ROUTING: Record<IssueCategory, string> = {
-  'Pothole': 'Road Maintenance',
-  'Road Damage': 'Road Maintenance',
-  'Broken Footpath': 'Road Maintenance',
+  'Pothole': 'Roads & Infrastructure Department',
+  'Road Damage': 'Roads & Infrastructure Department',
+  'Broken Footpath': 'Roads & Infrastructure Department',
   'Garbage': 'Sanitation Department',
   'Illegal Dumping': 'Sanitation Department',
-  'Streetlight': 'Electrical Department',
-  'Waterlogging': 'Water & Sewerage',
-  'Drainage': 'Water & Sewerage',
-  'Water Leakage': 'Water Supply',
-  'Traffic Sign': 'Traffic & Road Safety',
-  'Obstruction': 'Traffic & Road Safety',
-  'Public Safety': 'Public Safety & Police',
+  'Streetlight': 'Electrical / Street Lighting Department',
+  'Waterlogging': 'Drainage & Sewerage Department',
+  'Drainage': 'Drainage & Sewerage Department',
+  'Water Leakage': 'Water Supply Department',
+  'Traffic Sign': 'Traffic / Road Safety Department',
+  'Obstruction': 'Traffic / Road Safety Department',
+  'Public Safety': 'Traffic / Road Safety Department',
   'Other': 'General Administration'
 };
 
-export const analyzeIssue = async (photoData: string | null, description: string, citizenUrgency: Urgency): Promise<AIAnalysis> => {
-  await delay(1500); // Simulate processing
+export const analyzeIssue = async (
+  photoData: string | null, 
+  description: string, 
+  citizenUrgency: Urgency, 
+  citizenCategory: IssueCategory
+): Promise<AIAnalysis> => {
+  await delay(800); // Simulate processing
 
   const text = description.toLowerCase();
   
-  // 1. Detect Category & Keywords
+  // 1. Detect Category & Keywords deterministically
   let detectedCategory: IssueCategory = 'Other';
   let maxScore = 0;
   const foundKeywords: string[] = [];
-
+  
   Object.entries(CATEGORY_DICTIONARY).forEach(([cat, data]) => {
     let score = 0;
-    
-    // Check negatives
-    if (data.negative.some(neg => text.includes(neg))) {
-      return; // Skip this category
-    }
+    if (data.negative.some(neg => text.includes(neg))) return;
 
     data.keywords.forEach(word => {
       if (text.includes(word)) {
-        score += 2; // Base keyword match
+        score += 2;
         foundKeywords.push(word);
       }
     });
 
     data.severityWords.forEach(word => {
       if (text.includes(word)) {
-        score += 3; // Severity words weigh more
+        score += 3;
         foundKeywords.push(word);
       }
     });
@@ -132,83 +133,102 @@ export const analyzeIssue = async (photoData: string | null, description: string
     }
   });
 
-  // 2. Detect Severity & Safety Risk
-  let severity: Severity = 'LOW';
-  let safetyRisk: Severity = 'LOW';
-  let severityScore = 10;
-  
-  for (const [sev, words] of Object.entries(SEVERITY_INDICATORS)) {
-    if (words.some(w => text.includes(w))) {
-      severity = sev as Severity;
-      if (sev === 'CRITICAL') severityScore = 90;
-      if (sev === 'HIGH') severityScore = 70;
-      if (sev === 'MEDIUM') severityScore = 40;
-      break; // Pick the highest severity found (assuming they are ordered CRITICAL -> LOW)
-    }
-  }
-  
-  if (severity === 'CRITICAL' || severity === 'HIGH') {
-    safetyRisk = 'HIGH';
-  } else if (severity === 'MEDIUM') {
-    safetyRisk = 'MEDIUM';
+  // Respect citizen category if AI didn't find anything stronger
+  let finalCategory = citizenCategory;
+  let categoryMismatch = false;
+  if (maxScore > 3 && detectedCategory !== citizenCategory && (citizenCategory as string) !== 'Other') {
+    categoryMismatch = true; // AI strongly disagrees with citizen
+    finalCategory = detectedCategory; 
   }
 
-  // 3. Priority Scoring (Explainable)
+  // 2. Deterministic Priority Score & Reasoning
   const reasoning: { factor: string; score: number }[] = [];
-  let priorityScore = severityScore;
+  let priorityScore = 0;
+
+  // A. Citizen Urgency
+  let urgencyScore = 10;
+  if (citizenUrgency === 'URGENT') urgencyScore = 40;
+  else if (citizenUrgency === 'HIGH') urgencyScore = 30;
+  else if (citizenUrgency === 'MODERATE') urgencyScore = 20;
   
-  reasoning.push({ factor: `Base severity (${severity})`, score: severityScore });
+  priorityScore += urgencyScore;
+  reasoning.push({ factor: `Citizen Urgency (${citizenUrgency})`, score: urgencyScore });
 
-  if (safetyRisk === 'HIGH') {
-    priorityScore += 15;
-    reasoning.push({ factor: 'High safety risk detected', score: 15 });
+  // B. Safety Indicators
+  let safetyScore = 5;
+  let safetyRisk: Severity = 'LOW';
+  let severity: Severity = 'LOW';
+
+  if (SEVERITY_INDICATORS.CRITICAL.some(w => text.includes(w))) {
+    safetyScore = 25;
+    safetyRisk = 'HIGH';
+    severity = 'HIGH';
+  } else if (SEVERITY_INDICATORS.HIGH.some(w => text.includes(w))) {
+    safetyScore = 15;
+    safetyRisk = 'MEDIUM';
+    severity = 'MEDIUM';
+  } else if (SEVERITY_INDICATORS.MEDIUM.some(w => text.includes(w))) {
+    safetyScore = 5;
+    safetyRisk = 'LOW';
+    severity = 'MEDIUM';
+  }
+  priorityScore += safetyScore;
+  reasoning.push({ factor: safetyScore === 25 ? 'Critical safety keyword' : safetyScore === 15 ? 'Potential safety concern' : 'Normal safety context', score: safetyScore });
+
+  // C. Location Context
+  let locationScore = 5;
+  if (['school', 'hospital', 'market', 'traffic', 'highway', 'public', 'main road'].some(w => text.includes(w))) {
+    locationScore = 15;
+  }
+  priorityScore += locationScore;
+  reasoning.push({ factor: locationScore === 15 ? 'High-traffic/public area' : 'Normal area', score: locationScore });
+
+  // D. Description Evidence
+  let evidenceScore = 0;
+  if (foundKeywords.length >= 3) evidenceScore = 10;
+  else if (foundKeywords.length > 0) evidenceScore = 5;
+  
+  priorityScore += evidenceScore;
+  reasoning.push({ factor: evidenceScore === 10 ? 'Strong issue-specific evidence' : evidenceScore === 5 ? 'Moderate evidence' : 'Basic description', score: evidenceScore });
+
+  // Clamp priority score
+  priorityScore = Math.min(100, Math.max(0, priorityScore));
+
+  // Determine Final Severity based on priority score deterministically
+  if (priorityScore >= 80) severity = 'HIGH';
+  else if (priorityScore >= 50) severity = 'MEDIUM';
+  else severity = 'LOW';
+
+  // 3. Deterministic Confidence
+  let confidence = 75; // Limited info
+  if (foundKeywords.length >= 2 && !categoryMismatch) {
+    confidence = 85; // Good description + category match
+    if (photoData) {
+      confidence = 92; // Strong description + category match + image
+    }
+  } else if (foundKeywords.length >= 2 && photoData) {
+    confidence = 88;
   }
 
-  if (text.includes('school') || text.includes('hospital') || text.includes('university') || text.includes('market') || text.includes('traffic')) {
-    priorityScore += 12;
-    reasoning.push({ factor: 'High traffic/sensitive location', score: 12 });
-  }
-
-  if (foundKeywords.length > 2) {
-    priorityScore += 5;
-    reasoning.push({ factor: 'Detailed descriptive report', score: 5 });
-  }
-
-  if (citizenUrgency === 'URGENT') {
-    priorityScore += 20;
-    reasoning.push({ factor: 'Citizen flagged as URGENT', score: 20 });
-  } else if (citizenUrgency === 'HIGH') {
-    priorityScore += 10;
-    reasoning.push({ factor: 'Citizen flagged as HIGH', score: 10 });
-  }
-
-  priorityScore = Math.min(100, priorityScore);
-
-  // 4. Confidence Score
-  // Base confidence on keyword density and presence of a photo
-  const confidence = Math.min(98, 50 + (foundKeywords.length * 8) + (photoData ? 15 : 0));
+  // 4. Deterministic Resolution Time
+  let estimatedResolutionTime = '5-10 days';
+  if (citizenUrgency === 'URGENT') estimatedResolutionTime = '6-24 hours';
+  else if (citizenUrgency === 'HIGH') estimatedResolutionTime = '24-48 hours';
+  else if (citizenUrgency === 'MODERATE') estimatedResolutionTime = '2-5 days';
+  else estimatedResolutionTime = '5-10 days';
 
   const matchedSignals = [
     ...(foundKeywords.length > 0 ? ['Keywords Matched'] : []),
     ...(photoData ? ['Image Evidence'] : []),
-    ...(safetyRisk === 'HIGH' ? ['High Safety Risk'] : [])
+    ...(categoryMismatch ? ['Category Review Suggested'] : [])
   ];
 
-  let estimatedResolutionTime = '5-10 days';
-  if (citizenUrgency === 'URGENT' || priorityScore > 85) {
-    estimatedResolutionTime = '6-24 hours';
-  } else if (citizenUrgency === 'HIGH' || priorityScore > 70) {
-    estimatedResolutionTime = '24-48 hours';
-  } else if (citizenUrgency === 'MODERATE' || priorityScore > 40) {
-    estimatedResolutionTime = '2-5 days';
-  }
-
   return {
-    confidence: Math.round(confidence),
-    detectedCategory,
+    confidence,
+    detectedCategory: finalCategory,
     severity,
     safetyRisk,
-    suggestedDepartment: DEPARTMENT_ROUTING[detectedCategory] || 'General Administration',
+    suggestedDepartment: DEPARTMENT_ROUTING[finalCategory] || 'General Administration',
     priorityScore,
     priorityReasoning: reasoning,
     keywords: [...new Set(foundKeywords)],

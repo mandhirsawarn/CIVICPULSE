@@ -58,6 +58,8 @@ export interface Issue {
   assignedTeamId?: string;
   slaTarget?: string; // ISO String
   resolutionEvidence?: string[];
+  contactPhone?: string;
+  contactEmail?: string;
   timeline: TimelineEvent[];
 }
 
