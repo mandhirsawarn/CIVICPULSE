@@ -15,7 +15,16 @@ const getStatusColor = (status: string) => {
   }
 };
 
-
+function MapController({ position, flyTrigger }: { position: {lat: number, lng: number}, flyTrigger: number }) {
+  const map = useMap();
+  React.useEffect(() => {
+    if (map && position && flyTrigger > 0) {
+      map.panTo(position);
+      map.setZoom(14);
+    }
+  }, [map, position, flyTrigger]);
+  return null;
+}
 
 const CityMap = () => {
   const { issues, hotspots } = useStore();
@@ -37,14 +46,6 @@ const CityMap = () => {
   const placesLib = useMapsLibrary('places');
   const geocoder = React.useMemo(() => geocodingLib ? new geocodingLib.Geocoder() : null, [geocodingLib]);
   const autocompleteService = React.useMemo(() => placesLib ? new placesLib.AutocompleteService() : null, [placesLib]);
-  const map = useMap();
-  
-  React.useEffect(() => {
-    if (map && position && flyTrigger > 0) {
-      map.panTo(position);
-      map.setZoom(14);
-    }
-  }, [map, position, flyTrigger]);
 
   const locateUser = React.useCallback(() => {
     setIsLocating(true);
@@ -347,9 +348,8 @@ const CityMap = () => {
 
         <Map 
           defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
-          center={position}
           defaultZoom={13}
-          mapId="civicpulse_city_map"
+          mapId="civicpulse_map"
           disableDefaultUI={true}
           onClick={async (e) => {
             if (e.detail.latLng) {

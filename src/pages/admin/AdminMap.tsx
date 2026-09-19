@@ -16,9 +16,16 @@ const getStatusColor = (status: string) => {
   }
 };
 
-
-
-const AdminMap = () => {
+function MapController({ position, flyTrigger }: { position: {lat: number, lng: number}, flyTrigger: number }) {
+  const map = useMap();
+  React.useEffect(() => {
+    if (map && position && flyTrigger > 0) {
+      map.panTo(position);
+      map.setZoom(14);
+    }
+  }, [map, position, flyTrigger]);
+  return null;
+}const AdminMap = () => {
   const { issues, fieldTeams, hotspots, departments } = useStore();
   const [activeFilter, setActiveFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
@@ -31,14 +38,7 @@ const AdminMap = () => {
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [flyTrigger, setFlyTrigger] = useState(0);
-  const map = useMap();
-  
-  React.useEffect(() => {
-    if (map && position && flyTrigger > 0) {
-      map.panTo(position);
-      map.setZoom(14);
-    }
-  }, [map, position, flyTrigger]);
+
 
   const locateUser = React.useCallback(() => {
     setIsLocating(true);
@@ -330,11 +330,11 @@ const AdminMap = () => {
           <div className="flex-1 relative w-full h-full">
             <Map 
               defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
-              center={position}
               defaultZoom={13}
               mapId="civicpulse_admin_map"
               disableDefaultUI={true}
             >
+              <MapController position={position} flyTrigger={flyTrigger} />
               {hotspots.map(hotspot => (
                 <AdvancedMarker 
                   key={hotspot.id}
