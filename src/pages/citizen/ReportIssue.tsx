@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Circle, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, Polyline, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useStore } from '../../store/useStore';
 import { analyzeIssue, detectDuplicates } from '../../services/aiService';
@@ -33,6 +33,17 @@ const STEPS = [
   { num: '06', title: 'Submit' }
 ];
 
+const MapClickHandler = ({ onLocationSelect, active }: { onLocationSelect: (lat: number, lng: number) => void, active: boolean }) => {
+  useMapEvents({
+    click(e) {
+      if (active) {
+        onLocationSelect(e.latlng.lat, e.latlng.lng);
+      }
+    }
+  });
+  return null;
+};
+
 const ReportIssue = () => {
   const navigate = useNavigate();
   const { addIssue, currentUser, issues } = useStore();
@@ -45,6 +56,7 @@ const ReportIssue = () => {
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState(false);
   const [locationSource, setLocationSource] = useState<'GPS' | 'Manual' | 'Search'>('GPS');
+  const [isDropPinMode, setIsDropPinMode] = useState(false);
   const [description, setDescription] = useState('');
   const [urgency, setUrgency] = useState<Urgency | ''>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,30 +127,76 @@ const ReportIssue = () => {
     }
   }, [step]);
 
+  const reverseGeocode = async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      if (data && data.display_name) {
+        setLocationStr(data.display_name);
+      } else {
+        setLocationStr(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+      }
+    } catch (e) {
+      setLocationStr(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+    }
+  };
+
   const handleManualLocation = () => {
-    // Default center for manual picking (India center)
-    setCoordinates({ lat: 20.5937, lng: 78.9629 });
-    setLocationStr('Manual Location Selected (Drag to adjust)');
+    setIsDropPinMode(true);
+    if (!coordinates) {
+      setCoordinates({ lat: 20.5937, lng: 78.9629 });
+    }
+    setLocationStr('Click anywhere on the map to drop a pin.');
     setLocationSource('Manual');
     setLocationError(false);
   };
+
+  const handleMapClick = (lat: number, lng: number) => {
+    setCoordinates({ lat, lng });
+    setLocationSource('Manual');
+    setIsDropPinMode(false);
+    setLocationStr('Fetching address...');
+    reverseGeocode(lat, lng);
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (searchQuery.trim().length >= 3) {
+        setIsLocating(true);
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
+          const data = await res.json();
+          setSearchSuggestions(data || []);
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setIsLocating(false);
+        }
+      } else {
+        setSearchSuggestions([]);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleSearchLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setIsLocating(true);
-    setSearchSuggestions([]);
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
       const data = await res.json();
       if (data && data.length > 0) {
         setSearchSuggestions(data);
+        if (data.length === 1) {
+          handleSelectSuggestion(data[0]);
+        }
       } else {
-        alert("Location not found. Try a different search term.");
+        alert("No locations found. Try a nearby landmark, road, sector or full address.");
       }
     } catch (e) {
       console.error(e);
-      alert("Search failed.");
+      alert("Location search is temporarily unavailable. You can still use Current Location or Drop Pin.");
     } finally {
       setIsLocating(false);
     }
@@ -151,8 +209,9 @@ const ReportIssue = () => {
     setLocationStr(suggestion.display_name);
     setLocationSource('Search');
     setLocationError(false);
+    setIsDropPinMode(false);
     setSearchSuggestions([]);
-    setSearchQuery('');
+    setSearchQuery(''); // Or suggestion.display_name if we want it in the box
   };
 
   const runAnalysis = async () => {
@@ -428,25 +487,44 @@ const ReportIssue = () => {
                   <Button type="submit" disabled={isLocating}>Search</Button>
                 </form>
                 
+                {isLocating && searchQuery.length >= 3 && searchSuggestions.length === 0 && (
+                  <div className="bg-white border border-brand-200 rounded-lg shadow-lg mb-4 p-4 z-50 text-sm text-civic-muted flex items-center justify-center">
+                    <Loader2 size={16} className="animate-spin mr-2" /> Searching locations...
+                  </div>
+                )}
+                
+                {!isLocating && searchQuery.length >= 3 && searchSuggestions.length === 0 && (
+                  <div className="bg-white border border-brand-200 rounded-lg shadow-lg mb-4 p-4 z-50 text-sm text-civic-muted text-center">
+                    No locations found. Try a nearby landmark, road, sector or full address.
+                  </div>
+                )}
+
                 {searchSuggestions.length > 0 && (
                   <div className="bg-white border border-brand-200 rounded-lg shadow-lg mb-4 max-h-48 overflow-y-auto z-50">
-                    {searchSuggestions.map((sugg, idx) => (
-                      <button
-                        key={idx}
-                        className="w-full text-left p-3 hover:bg-brand-50 border-b border-brand-100 last:border-b-0 text-sm text-civic-text"
-                        onClick={() => handleSelectSuggestion(sugg)}
-                      >
-                        {sugg.display_name}
-                      </button>
-                    ))}
+                    {searchSuggestions.map((sugg, idx) => {
+                      const parts = sugg.display_name.split(',');
+                      const placeName = parts[0];
+                      const address = parts.slice(1).join(',').trim();
+                      return (
+                        <button
+                          key={idx}
+                          className="w-full text-left p-3 hover:bg-brand-50 border-b border-brand-100 last:border-b-0"
+                          onClick={() => handleSelectSuggestion(sugg)}
+                        >
+                          <div className="font-bold text-civic-text text-sm truncate">{placeName}</div>
+                          {address && <div className="text-xs text-civic-muted truncate">{address}</div>}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
               
-              <div className="rounded-xl border border-brand-200 h-64 mb-4 relative overflow-hidden bg-brand-50">
+              <div className={cn("rounded-xl border border-brand-200 h-64 mb-4 relative overflow-hidden bg-brand-50", isDropPinMode ? "ring-2 ring-civic-primary cursor-crosshair" : "")}>
                 {coordinates ? (
-                  <MapContainer center={[coordinates.lat, coordinates.lng]} zoom={locationSource === 'Manual' ? 5 : 15} style={{ height: '100%', width: '100%', zIndex: 1 }}>
+                  <MapContainer center={[coordinates.lat, coordinates.lng]} zoom={locationSource === 'Manual' ? 16 : 15} style={{ height: '100%', width: '100%', zIndex: 1 }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+                    <MapClickHandler onLocationSelect={handleMapClick} active={isDropPinMode} />
                     <Marker 
                       position={[coordinates.lat, coordinates.lng]} 
                       draggable={true}
@@ -455,8 +533,9 @@ const ReportIssue = () => {
                           const marker = e.target;
                           const position = marker.getLatLng();
                           setCoordinates({ lat: position.lat, lng: position.lng });
-                          setLocationStr(`Lat: ${position.lat.toFixed(4)}, Lng: ${position.lng.toFixed(4)}`);
                           setLocationSource('Manual');
+                          setLocationStr('Fetching address...');
+                          reverseGeocode(position.lat, position.lng);
                         }
                       }}
                     />

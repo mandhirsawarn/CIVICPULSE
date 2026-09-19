@@ -59,6 +59,8 @@ const CityMap = () => {
   const [activeFilter, setActiveFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   
   // Default center (India center)
   const [position, setPosition] = useState<[number, number]>([20.5937, 78.9629]); 
@@ -94,23 +96,56 @@ const CityMap = () => {
     locateUser();
   }, [locateUser]);
 
+  React.useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (searchQuery.trim().length >= 3) {
+        setIsSearching(true);
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
+          const data = await res.json();
+          setSearchSuggestions(data || []);
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSearchSuggestions([]);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const handleSearchLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
+    setIsSearching(true);
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=7&countrycodes=in`);
       const data = await res.json();
       if (data && data.length > 0) {
-        const { lat, lon } = data[0];
-        setPosition([parseFloat(lat), parseFloat(lon)]);
-        setFlyTrigger(prev => prev + 1);
+        setSearchSuggestions(data);
+        if (data.length === 1) {
+          handleSelectSuggestion(data[0]);
+        }
       } else {
         alert("Location not found.");
       }
     } catch (e) {
       console.error(e);
       alert("Search failed.");
+    } finally {
+      setIsSearching(false);
     }
+  };
+
+  const handleSelectSuggestion = (suggestion: any) => {
+    const newLat = parseFloat(suggestion.lat);
+    const newLng = parseFloat(suggestion.lon);
+    setPosition([newLat, newLng]);
+    setFlyTrigger(prev => prev + 1);
+    setSearchSuggestions([]);
+    setSearchQuery(suggestion.display_name.split(',')[0]); // Update with just the place name
   };
 
   const filteredIssues = issues.filter(issue => {
@@ -223,7 +258,7 @@ const CityMap = () => {
         
         {/* Map Overlay Controls */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-sm px-4">
-          <form onSubmit={handleSearchLocation} className="flex bg-white rounded-lg shadow-md border border-civic-border overflow-hidden">
+          <form onSubmit={handleSearchLocation} className="flex bg-white rounded-lg shadow-md border border-civic-border overflow-hidden mb-2">
             <input
               type="text"
               placeholder="Search map location..."
@@ -233,6 +268,32 @@ const CityMap = () => {
             />
             <Button type="submit" variant="ghost" className="rounded-none border-l border-brand-100">Search</Button>
           </form>
+
+          {isSearching && searchQuery.length >= 3 && searchSuggestions.length === 0 && (
+            <div className="bg-white border border-brand-200 rounded-lg shadow-lg p-3 text-sm text-civic-muted flex items-center justify-center">
+              <Loader2 size={16} className="animate-spin mr-2" /> Searching...
+            </div>
+          )}
+
+          {searchSuggestions.length > 0 && (
+            <div className="bg-white border border-brand-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              {searchSuggestions.map((sugg, idx) => {
+                const parts = sugg.display_name.split(',');
+                const placeName = parts[0];
+                const address = parts.slice(1).join(',').trim();
+                return (
+                  <button
+                    key={idx}
+                    className="w-full text-left p-3 hover:bg-brand-50 border-b border-brand-100 last:border-b-0"
+                    onClick={() => handleSelectSuggestion(sugg)}
+                  >
+                    <div className="font-bold text-civic-text text-sm truncate">{placeName}</div>
+                    {address && <div className="text-xs text-civic-muted truncate">{address}</div>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         
         <button 
