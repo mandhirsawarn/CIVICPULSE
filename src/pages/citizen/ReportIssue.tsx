@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall, Edit2, FileText, Users } from 'lucide-react';
+import { Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, Info, CheckCircle2, Crosshair, Check, Mic, Square, Play, Trash2, PhoneCall, Edit2, FileText, Users, Search } from 'lucide-react';
 import { Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 import { useStore } from '../../store/useStore';
 import { analyzeIssue, detectDuplicates } from '../../services/aiService';
@@ -57,9 +57,8 @@ const ReportIssue = () => {
   const [isDropPinMode, setIsDropPinMode] = useState(false);
   const [description, setDescription] = useState('');
   const [urgency, setUrgency] = useState<Urgency | ''>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
   const [contactPhone, setContactPhone] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -349,7 +348,34 @@ const ReportIssue = () => {
   const geocodingLib = useMapsLibrary('geocoding');
   const placesLib = useMapsLibrary('places');
   const geocoder = React.useMemo(() => geocodingLib ? new geocodingLib.Geocoder() : null, [geocodingLib]);
-  const autocompleteService = React.useMemo(() => placesLib ? new placesLib.AutocompleteService() : null, [placesLib]);
+  
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [placeAutocomplete, setPlaceAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  React.useEffect(() => {
+    if (!placesLib || !inputRef.current) return;
+    const options = {
+      fields: ['geometry', 'name', 'formatted_address'],
+      componentRestrictions: { country: 'in' },
+    };
+    setPlaceAutocomplete(new placesLib.Autocomplete(inputRef.current, options));
+  }, [placesLib]);
+
+  React.useEffect(() => {
+    if (!placeAutocomplete) return;
+    placeAutocomplete.addListener('place_changed', () => {
+      const place = placeAutocomplete.getPlace();
+      if (place.geometry?.location) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        setCoordinates({ lat, lng });
+        setLocationSource('Search');
+        setLocationStr(place.name || place.formatted_address || 'Selected Location');
+        setLocationError(false);
+        setIsDropPinMode(false);
+      }
+    });
+  }, [placeAutocomplete, placeAutocomplete?.addListener]);
   
   const reverseGeocode = async (lat: number, lng: number) => {
     if (!geocoder) return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
@@ -382,73 +408,7 @@ const ReportIssue = () => {
     reverseGeocode(lat, lng).then(addr => setLocationStr(addr));
   };
 
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (searchQuery.trim().length >= 3 && autocompleteService) {
-        setIsLocating(true);
-        try {
-          const res = await autocompleteService.getPlacePredictions({ input: searchQuery, componentRestrictions: { country: 'in' } });
-          const suggestions = res.predictions.map((p: any) => ({
-            place_id: p.place_id,
-            display_name: p.description
-          }));
-          setSearchSuggestions(suggestions);
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setIsLocating(false);
-        }
-      } else {
-        setSearchSuggestions([]);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery, autocompleteService]);
 
-  const handleSearchLocation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim() || !autocompleteService) return;
-    setIsLocating(true);
-    try {
-      const res = await autocompleteService.getPlacePredictions({ input: searchQuery, componentRestrictions: { country: 'in' } });
-      if (res.predictions && res.predictions.length > 0) {
-        const suggestions = res.predictions.map((p: any) => ({
-          place_id: p.place_id,
-          display_name: p.description
-        }));
-        setSearchSuggestions(suggestions);
-        if (suggestions.length === 1) {
-          handleSelectSuggestion(suggestions[0]);
-        }
-      } else {
-        alert("Location not found.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Search failed.");
-    } finally {
-      setIsLocating(false);
-    }
-  };
-
-  const handleSelectSuggestion = (suggestion: any) => {
-    if (!geocoder) return;
-    geocoder.geocode({ placeId: suggestion.place_id }).then((response: any) => {
-      if (response.results[0]) {
-        const location = response.results[0].geometry.location;
-        const newLat = location.lat();
-        const newLng = location.lng();
-        setCoordinates({ lat: newLat, lng: newLng });
-        setLocationSource('Search');
-        setSearchSuggestions([]);
-        const placeName = suggestion.display_name.split(',')[0];
-        setSearchQuery(placeName);
-        setLocationStr(suggestion.display_name);
-        setLocationError(false);
-        setIsDropPinMode(false);
-      }
-    });
-  };
 
   const getAIAnalysis = async () => {
     setStep('AI_LOADING' as any);
@@ -885,29 +845,19 @@ const ReportIssue = () => {
                   </button>
                 </div>
 
-                <form onSubmit={(e) => { e.preventDefault(); handleSearchLocation(e); }} className="relative mb-4">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search for an address or landmark..."
-                    className="w-full p-3 pr-10 border border-brand-200 rounded-lg text-sm focus:outline-none focus:border-civic-primary bg-white"
-                  />
-                  <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-brand-400 hover:text-civic-primary">
-                    <Loader2 size={16} className={cn(isLocating && searchQuery ? "animate-spin" : "hidden")} />
-                    {!isLocating && <MapPin size={16} />}
-                  </button>
-
-                  {searchSuggestions.length > 0 && (
-                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-brand-200 rounded-lg shadow-xl z-[1000] max-h-48 overflow-y-auto">
-                      {searchSuggestions.map((s, i) => (
-                        <div key={i} onClick={() => handleSelectSuggestion(s)} className="p-3 border-b border-brand-50 last:border-0 hover:bg-brand-50 cursor-pointer text-sm">
-                          {s.display_name}
-                        </div>
-                      ))}
+                <div className="relative mb-4">
+                  <div className="flex bg-white rounded-lg shadow-md border border-brand-200 overflow-hidden z-[1000] relative">
+                    <div className="bg-brand-50 p-3 text-civic-primary border-r border-brand-100">
+                      <Search size={20} />
                     </div>
-                  )}
-                </form>
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      placeholder="Search for an address or landmark..."
+                      className="flex-1 p-3 text-sm focus:outline-none"
+                    />
+                  </div>
+                </div>
 
                 {isDropPinMode && (
                   <div className="bg-civic-primary/10 border border-civic-primary/20 text-civic-primary text-sm font-medium p-3 rounded-lg mb-4 flex items-center justify-center animate-pulse text-center">
@@ -921,7 +871,10 @@ const ReportIssue = () => {
                     center={coordinates || { lat: 30.7333, lng: 76.7794 }}
                     defaultZoom={13}
                     mapId="civicpulse_report_map"
-                    disableDefaultUI={true}
+                    mapTypeControl={true}
+                    streetViewControl={true}
+                    fullscreenControl={true}
+                    zoomControl={true}
                     onClick={(e) => {
                       if ((isDropPinMode || locationSource === 'Manual') && e.detail.latLng) {
                         handleMapClick(e.detail.latLng.lat, e.detail.latLng.lng);

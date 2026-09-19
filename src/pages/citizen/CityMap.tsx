@@ -30,9 +30,6 @@ const CityMap = () => {
   const { issues, hotspots } = useStore();
   const [activeFilter, setActiveFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [searchPin, setSearchPin] = useState<{lat: number, lng: number, label: string, isManual?: boolean} | null>(null);
   
   // Default center (India center)
@@ -42,10 +39,32 @@ const CityMap = () => {
   const [flyTrigger, setFlyTrigger] = useState(0);
   const [showAllReports, setShowAllReports] = useState(false);
 
-  const geocodingLib = useMapsLibrary('geocoding');
   const placesLib = useMapsLibrary('places');
-  const geocoder = React.useMemo(() => geocodingLib ? new geocodingLib.Geocoder() : null, [geocodingLib]);
-  const autocompleteService = React.useMemo(() => placesLib ? new placesLib.AutocompleteService() : null, [placesLib]);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [placeAutocomplete, setPlaceAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  React.useEffect(() => {
+    if (!placesLib || !inputRef.current) return;
+    const options = {
+      fields: ['geometry', 'name', 'formatted_address'],
+      componentRestrictions: { country: 'in' },
+    };
+    setPlaceAutocomplete(new placesLib.Autocomplete(inputRef.current, options));
+  }, [placesLib]);
+
+  React.useEffect(() => {
+    if (!placeAutocomplete) return;
+    placeAutocomplete.addListener('place_changed', () => {
+      const place = placeAutocomplete.getPlace();
+      if (place.geometry?.location) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        setPosition({ lat, lng });
+        setFlyTrigger(prev => prev + 1);
+        setSearchPin({ lat, lng, label: place.name || '' });
+      }
+    });
+  }, [placeAutocomplete, placeAutocomplete?.addListener]);
 
   const locateUser = React.useCallback(() => {
     setIsLocating(true);
@@ -71,8 +90,9 @@ const CityMap = () => {
   }, []);
 
   const reverseGeocode = async (lat: number, lng: number) => {
-    if (!geocoder) return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
     try {
+      if (!placesLib) return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+      const geocoder = new google.maps.Geocoder();
       const response = await geocoder.geocode({ location: { lat, lng } });
       if (response.results[0]) {
         return response.results[0].formatted_address;
@@ -83,75 +103,13 @@ const CityMap = () => {
     return `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
   };
 
+
+
   React.useEffect(() => {
     locateUser();
   }, [locateUser]);
 
-  React.useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (searchQuery.trim().length >= 3 && autocompleteService) {
-        setIsSearching(true);
-        try {
-          const res = await autocompleteService.getPlacePredictions({ input: searchQuery, componentRestrictions: { country: 'in' } });
-          const suggestions = res.predictions.map((p: any) => ({
-            place_id: p.place_id,
-            display_name: p.description
-          }));
-          setSearchSuggestions(suggestions);
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setIsSearching(false);
-        }
-      } else {
-        setSearchSuggestions([]);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery, autocompleteService]);
 
-  const handleSearchLocation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim() || !autocompleteService) return;
-    setIsSearching(true);
-    try {
-      const res = await autocompleteService.getPlacePredictions({ input: searchQuery, componentRestrictions: { country: 'in' } });
-      if (res.predictions && res.predictions.length > 0) {
-        const suggestions = res.predictions.map((p: any) => ({
-          place_id: p.place_id,
-          display_name: p.description
-        }));
-        setSearchSuggestions(suggestions);
-        if (suggestions.length === 1) {
-          handleSelectSuggestion(suggestions[0]);
-        }
-      } else {
-        alert("Location not found.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Search failed.");
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleSelectSuggestion = (suggestion: any) => {
-    if (!geocoder) return;
-    geocoder.geocode({ placeId: suggestion.place_id }).then((response: any) => {
-      if (response.results[0]) {
-        const location = response.results[0].geometry.location;
-        const newLat = location.lat();
-        const newLng = location.lng();
-        setPosition({lat: newLat, lng: newLng});
-        setFlyTrigger(prev => prev + 1);
-        setSearchSuggestions([]);
-        const placeName = suggestion.display_name.split(',')[0];
-        setSearchQuery(placeName);
-        setSearchPin({ lat: newLat, lng: newLng, label: placeName });
-      }
-    });
-  };
 
   const filteredIssues = issues.filter(issue => {
     if (activeFilter !== 'All') {
@@ -263,49 +221,14 @@ const CityMap = () => {
         
         {/* Map Overlay Controls */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-sm px-4">
-          <form onSubmit={handleSearchLocation} className="flex bg-white rounded-lg shadow-md border border-civic-border overflow-hidden mb-2">
+          <div className="flex bg-white rounded-lg shadow-md border border-civic-border overflow-hidden mb-2">
             <input
+              ref={inputRef}
               type="text"
               placeholder="Search map location..."
               className="flex-1 p-3 text-sm focus:outline-none"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
             />
-            <Button type="submit" variant="ghost" className="rounded-none border-l border-brand-100">Search</Button>
-          </form>
-
-          {isSearching && searchQuery.length >= 3 && searchSuggestions.length === 0 && (
-            <div className="bg-white border border-brand-200 rounded-lg shadow-lg p-3 text-sm text-civic-muted flex items-center justify-center">
-              <Loader2 size={16} className="animate-spin mr-2" /> Searching...
-            </div>
-          )}
-
-          {!isSearching && searchQuery.length >= 3 && searchSuggestions.length === 0 && (
-            <div className="bg-white border border-brand-200 rounded-lg shadow-lg p-4 text-sm text-center">
-              <div className="font-bold text-civic-text mb-1">No exact matches found</div>
-              <div className="text-xs text-civic-muted">Try a broader search (like the city name) or explore the map manually.</div>
-            </div>
-          )}
-
-          {searchSuggestions.length > 0 && (
-            <div className="bg-white border border-brand-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-              {searchSuggestions.map((sugg, idx) => {
-                const parts = sugg.display_name.split(',');
-                const placeName = parts[0];
-                const address = parts.slice(1).join(',').trim();
-                return (
-                  <button
-                    key={idx}
-                    className="w-full text-left p-3 hover:bg-brand-50 border-b border-brand-100 last:border-b-0"
-                    onClick={() => handleSelectSuggestion(sugg)}
-                  >
-                    <div className="font-bold text-civic-text text-sm truncate">{placeName}</div>
-                    {address && <div className="text-xs text-civic-muted truncate">{address}</div>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          </div>
         </div>
         
         <button 
@@ -350,7 +273,10 @@ const CityMap = () => {
           defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
           defaultZoom={13}
           mapId="civicpulse_map"
-          disableDefaultUI={true}
+          mapTypeControl={true}
+          streetViewControl={true}
+          fullscreenControl={true}
+          zoomControl={true}
           onClick={async (e) => {
             if (e.detail.latLng) {
               const lat = e.detail.latLng.lat;

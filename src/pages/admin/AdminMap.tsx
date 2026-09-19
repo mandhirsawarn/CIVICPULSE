@@ -332,7 +332,10 @@ function MapController({ position, flyTrigger }: { position: {lat: number, lng: 
               defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
               defaultZoom={13}
               mapId="civicpulse_admin_map"
-              disableDefaultUI={true}
+              mapTypeControl={true}
+              streetViewControl={true}
+              fullscreenControl={true}
+              zoomControl={true}
             >
               <MapController position={position} flyTrigger={flyTrigger} />
               {hotspots.map(hotspot => (

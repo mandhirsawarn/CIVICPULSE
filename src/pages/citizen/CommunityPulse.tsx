@@ -212,7 +212,10 @@ const CommunityPulse = () => {
             defaultCenter={{ lat: 30.7333, lng: 76.7794 }} 
             defaultZoom={12} 
             mapId="civicpulse_community_pulse_map"
-            disableDefaultUI={true}
+            mapTypeControl={true}
+            streetViewControl={true}
+            fullscreenControl={true}
+            zoomControl={true}
           >
             {sortedIssues.map(issue => (
               <AdvancedMarker 
