@@ -1,0 +1,54 @@
+# CIVICPULSE - COMMAND REFERENCE
+
+Here are all the essential commands you need to run, build, and manage your CivicPulse SIH Demo application.
+
+### Prerequisites
+Make sure you are in the project folder before running these commands:
+> cd "c:\Users\mandh\OneDrive\Desktop\CIVIC PLUSE"
+
+---
+
+## 1. Start the Development Server
+This is the primary command you will use during the hackathon. It starts the live site on your local machine.
+
+**If you are using Command Prompt (cmd), run:**
+npm run dev
+
+**If you are using PowerShell and get an "Execution_Policies" error, run this instead:**
+cmd.exe /c "npm run dev"
+
+How to access: Open your browser and go to http://localhost:5173
+How to stop: Go to the terminal where it's running and press `Ctrl + C` (Control + C).
+
+---
+
+## 2. Install Dependencies
+If you ever delete the `node_modules` folder, or add new packages, run this to install everything again.
+
+**Command Prompt:**
+npm install
+
+**PowerShell:**
+cmd.exe /c "npm install"
+
+---
+
+## 3. Build for Production
+When your project is completely finished and you need to build the final optimized version (e.g., for deploying to Vercel, Netlify, or a VPS).
+Command:
+npm run build
+
+---
+
+## 4. Preview the Production Build
+After running `npm run build`, use this command to test the production version locally before deploying.
+Command:
+npm run preview
+
+---
+
+## Summary for SIH Judges Demo:
+1. Open terminal
+2. Run `npm run dev`
+3. Click the link (e.g., http://localhost:5173) to open the site.
+4. When finished, press `Ctrl + C` to stop the server.

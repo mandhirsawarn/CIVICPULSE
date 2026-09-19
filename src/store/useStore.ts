@@ -1,0 +1,208 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { Issue, Department, FieldTeam, CivicChallenge, User, Hotspot, Notification, IssueCategory, Severity } from '../types';
+import { mockIssues, mockDepartments, mockFieldTeams, mockChallenges, mockHotspots } from '../mockData';
+
+interface StoreState {
+  currentUser: User | null;
+  issues: Issue[];
+  departments: Department[];
+  fieldTeams: FieldTeam[];
+  challenges: CivicChallenge[];
+  hotspots: Hotspot[];
+  notifications: Notification[];
+  cityPulseScore: number;
+  
+  setCurrentUser: (user: User | null) => void;
+  addIssue: (issue: Issue) => void;
+  updateIssueStatus: (id: string, status: Issue['status'], evidence?: string[]) => void;
+  assignTeam: (issueId: string, teamId: string, departmentId: string) => void;
+  addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
+  markNotificationRead: (id: string) => void;
+  recalculateHotspots: () => void;
+}
+
+// Simple Haversine for store
+const getDistKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+  return R * c; 
+};
+
+export const useStore = create<StoreState>()(
+  persist(
+    (set, get) => ({
+      currentUser: {
+        id: 'user-1',
+        name: 'Rohan Sharma',
+        email: 'rohan@example.com',
+        role: 'CITIZEN',
+        civicPoints: 420
+      },
+      issues: mockIssues,
+      departments: mockDepartments,
+      fieldTeams: mockFieldTeams,
+      challenges: mockChallenges,
+      hotspots: mockHotspots,
+      notifications: [],
+      cityPulseScore: 84,
+      setCurrentUser: (user) => set({ currentUser: user }),
+      
+      addIssue: (issue) => {
+        set((state) => ({ issues: [issue, ...state.issues] }));
+        get().recalculateHotspots();
+        
+        // Add a notification for the user
+        get().addNotification({
+          userId: issue.reporterId,
+          title: 'Issue Reported Successfully',
+          message: `Your report for ${issue.category} has been received and is under AI analysis.`,
+          actionUrl: '/my-reports'
+        });
+      },
+
+      updateIssueStatus: (id, status, evidence) => {
+        set((state) => ({
+          issues: state.issues.map(issue => {
+            if (issue.id === id) {
+              const updatedIssue = { ...issue, status };
+              if (evidence) updatedIssue.resolutionEvidence = evidence;
+              updatedIssue.timeline = [
+                ...issue.timeline,
+                {
+                  id: `tl-${Date.now()}`,
+                  status,
+                  timestamp: new Date().toISOString(),
+                  description: `Status updated to ${status}`,
+                  actor: 'System',
+                  evidence
+                }
+              ];
+              return updatedIssue;
+            }
+            return issue;
+          })
+        }));
+
+        // Notify if it affects current user
+        const issue = get().issues.find(i => i.id === id);
+        if (issue) {
+          get().addNotification({
+            userId: issue.reporterId,
+            title: 'Issue Status Updated',
+            message: `Your report ${issue.id} is now ${status.replace('_', ' ')}.`,
+            actionUrl: '/my-reports'
+          });
+        }
+      },
+
+      assignTeam: (issueId, teamId, departmentId) => {
+        set((state) => {
+          const newIssues = state.issues.map(issue => 
+            issue.id === issueId 
+              ? { 
+                  ...issue, 
+                  status: 'ASSIGNED' as const, 
+                  assignedTeamId: teamId, 
+                  assignedDepartmentId: departmentId,
+                  timeline: [
+                    ...issue.timeline,
+                    {
+                      id: `tl-${Date.now()}`,
+                      status: 'ASSIGNED' as const,
+                      timestamp: new Date().toISOString(),
+                      description: 'Assigned to field team',
+                      actor: 'Admin'
+                    }
+                  ]
+                } 
+              : issue
+          );
+
+          const newTeams = state.fieldTeams.map(team =>
+            team.id === teamId
+              ? { ...team, status: 'EN_ROUTE' as const, currentIssueId: issueId }
+              : team
+          );
+
+          return { issues: newIssues, fieldTeams: newTeams };
+        });
+
+        const issue = get().issues.find(i => i.id === issueId);
+        if (issue) {
+          get().addNotification({
+            userId: issue.reporterId,
+            title: 'Team Assigned',
+            message: `A field team has been assigned to your report ${issue.id}.`,
+            actionUrl: '/my-reports'
+          });
+        }
+      },
+
+      addNotification: (notif) => set((state) => ({
+        notifications: [{
+          ...notif,
+          id: `notif-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          read: false
+        }, ...state.notifications]
+      })),
+
+      markNotificationRead: (id) => set((state) => ({
+        notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n)
+      })),
+
+      recalculateHotspots: () => {
+        // Very simple O(n^2) naive clustering for demo purposes
+        const issues = get().issues.filter(i => i.status !== 'RESOLVED' && i.status !== 'CITIZEN_VERIFIED');
+        const clusters: { lat: number; lng: number; issues: Issue[] }[] = [];
+        const CLUSTER_RADIUS_KM = 1.0;
+
+        issues.forEach(issue => {
+          let added = false;
+          for (const cluster of clusters) {
+            if (getDistKm(issue.location.lat, issue.location.lng, cluster.lat, cluster.lng) <= CLUSTER_RADIUS_KM) {
+              cluster.issues.push(issue);
+              added = true;
+              break;
+            }
+          }
+          if (!added) {
+            clusters.push({ lat: issue.location.lat, lng: issue.location.lng, issues: [issue] });
+          }
+        });
+
+        const newHotspots: Hotspot[] = clusters
+          .filter(c => c.issues.length >= 3)
+          .map((c, idx) => {
+            // Find top category
+            const cats = c.issues.map(i => i.category);
+            const topCategory = cats.sort((a,b) => cats.filter(v => v===a).length - cats.filter(v => v===b).length).pop() as IssueCategory;
+            // Find highest risk
+            const hasCritical = c.issues.some(i => i.priority === 'CRITICAL');
+            const hasHigh = c.issues.some(i => i.priority === 'HIGH');
+            const riskLevel: Severity = hasCritical ? 'CRITICAL' : hasHigh ? 'HIGH' : 'MEDIUM';
+
+            return {
+              id: `HS-${Date.now()}-${idx}`,
+              name: `Cluster Zone ${idx + 1}`,
+              description: `High concentration of issues around this area.`,
+              location: { lat: c.lat, lng: c.lng, radius: 1000 },
+              reportCount: c.issues.length,
+              topCategory,
+              riskLevel,
+              trend: Math.round(Math.random() * 20) + 10 // Mock trend
+            };
+          });
+
+        set({ hotspots: newHotspots.length > 0 ? newHotspots : mockHotspots });
+      }
+    }),
+    {
+      name: 'civicpulse-storage',
+    }
+  )
+);
