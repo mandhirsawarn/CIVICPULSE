@@ -256,31 +256,33 @@ export const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: numb
 
 // Configurable detection constants
 export const DUPLICATE_CONFIG = {
-  NEARBY_RADIUS_METERS: 100,      // Primary nearby radius threshold (~100m)
-  EXTENDED_RADIUS_METERS: 300,    // Extended candidate radius (~300m)
-  MAX_CANDIDATE_RADIUS_METERS: 500, // Hard cutoff: beyond 500m cannot be the same physical issue
-  HIGH_CONFIDENCE_THRESHOLD: 75,  // >= 75% is HIGH duplicate confidence
-  POSSIBLE_THRESHOLD: 50          // >= 50% is POSSIBLE duplicate
+  NEARBY_RADIUS_METERS: 200,        // Primary nearby radius threshold (~200m)
+  EXTENDED_RADIUS_METERS: 1500,     // Extended candidate radius (~1.5km)
+  MAX_CANDIDATE_RADIUS_METERS: 25000, // Municipal boundary radius (~25km)
+  HIGH_CONFIDENCE_THRESHOLD: 70,    // >= 70% is HIGH duplicate confidence
+  POSSIBLE_THRESHOLD: 45            // >= 45% is POSSIBLE duplicate
 };
 
 // Canonical synonym groups for semantic description matching
 const SYNONYM_GROUPS: Record<string, string[]> = {
-  pothole: ['pothole', 'crater', 'hole', 'cavity', 'depression', 'rut', 'pit', 'roadbreak'],
-  garbage: ['garbage', 'trash', 'waste', 'rubbish', 'dump', 'debris', 'litter', 'refuse', 'filth'],
-  waterlogging: ['waterlogging', 'waterlogged', 'flooding', 'flood', 'puddle', 'waterpool', 'overflow', 'inundation', 'stagnant'],
-  drainage: ['drainage', 'drain', 'sewer', 'sewage', 'gutter', 'nallah', 'culvert', 'pipe'],
-  streetlight: ['streetlight', 'light', 'lamp', 'lightpost', 'pole', 'lantern', 'illumination'],
-  damage: ['broken', 'damaged', 'cracked', 'shattered', 'crumbled', 'caved', 'ruined', 'hazardous'],
-  large: ['large', 'huge', 'massive', 'deep', 'giant', 'big', 'wide', 'major', 'extensive'],
+  pothole: ['pothole', 'potholes', 'crater', 'craters', 'hole', 'holes', 'cavity', 'depression', 'rut', 'pit', 'roadbreak', 'trench'],
+  garbage: ['garbage', 'trash', 'waste', 'rubbish', 'dump', 'debris', 'litter', 'refuse', 'filth', 'bin', 'overflowing'],
+  waterlogging: ['waterlogging', 'waterlogged', 'flooding', 'flood', 'puddle', 'waterpool', 'overflow', 'inundation', 'stagnant', 'pool'],
+  drainage: ['drainage', 'drain', 'drains', 'sewer', 'sewage', 'gutter', 'nallah', 'culvert', 'pipe', 'clogged'],
+  streetlight: ['streetlight', 'streetlights', 'light', 'lights', 'lamp', 'lamps', 'lightpost', 'pole', 'lantern', 'illumination', 'flickering'],
+  damage: ['broken', 'damaged', 'cracked', 'shattered', 'crumbled', 'caved', 'ruined', 'hazardous', 'danger'],
+  large: ['large', 'huge', 'massive', 'deep', 'giant', 'big', 'wide', 'major', 'extensive', 'severe'],
   small: ['small', 'tiny', 'minor', 'shallow', 'little'],
-  entrance: ['gate', 'entrance', 'entry', 'door', 'exit', 'barrier', 'arch'],
-  road: ['road', 'street', 'lane', 'highway', 'pathway', 'avenue', 'sector', 'crossing', 'chowk', 'intersection']
+  entrance: ['gate', 'entrance', 'entry', 'door', 'exit', 'barrier', 'arch', 'portal'],
+  road: ['road', 'street', 'lane', 'highway', 'pathway', 'avenue', 'sector', 'crossing', 'chowk', 'intersection', 'route', 'main', 'drive'],
+  institution: ['college', 'university', 'campus', 'school', 'institute', 'hospital', 'market', 'plaza']
 };
 
 const STOP_WORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'with',
   'by', 'of', 'from', 'this', 'that', 'there', 'here', 'it', 'its', 'near', 'beside', 'around', 'front',
-  'side', 'back', 'has', 'have', 'had', 'been', 'my', 'our', 'very', 'causing', 'severe', 'please', 'help'
+  'side', 'back', 'has', 'have', 'had', 'been', 'my', 'our', 'very', 'causing', 'severe', 'please', 'help',
+  'there', 'is', 'a', 'some', 'lot', 'due'
 ]);
 
 /**
@@ -305,7 +307,7 @@ const tokenizeAndNormalize = (text: string): string[] => {
 
 /**
  * Calculates semantic text similarity between two descriptions (0.0 to 1.0)
- * Uses word token overlap with synonym expansion (Dice + Jaccard)
+ * Uses containment, word token overlap, and synonym expansion
  */
 export const computeTextSimilarity = (desc1: string, desc2: string): number => {
   if (!desc1 || !desc2) return 0;
@@ -324,12 +326,14 @@ export const computeTextSimilarity = (desc1: string, desc2: string): number => {
     }
   }
 
+  const minLen = Math.min(tokens1.length, tokens2.length);
+  const containment = minLen > 0 ? intersectionCount / minLen : 0;
   const unionSize = new Set([...tokens1, ...tokens2]).size;
   const jaccard = unionSize > 0 ? intersectionCount / unionSize : 0;
   const dice = (2 * intersectionCount) / (tokens1.length + tokens2.length);
 
-  // Blend Jaccard and Dice for smoother score
-  return (jaccard * 0.4) + (dice * 0.6);
+  // Containment provides great resilience when comparing short vs long descriptions
+  return (containment * 0.5) + (dice * 0.3) + (jaccard * 0.2);
 };
 
 // Memory cache for perceptual image fingerprints
@@ -490,6 +494,10 @@ export const detectDuplicates = async (
     };
   }
 
+  // Fallback to municipal center if lat/lng are 0 or unset
+  const effectiveLat = (lat && lat !== 0) ? lat : 30.7333;
+  const effectiveLng = (lng && lng !== 0) ? lng : 76.7794;
+
   // Pre-calculate new report's image fingerprint if photo provided
   let newImageFp: number[] | null = null;
   if (photo) {
@@ -505,10 +513,12 @@ export const detectDuplicates = async (
 
   for (const issue of existingIssues) {
     // 1. Geographic distance check (Candidate filtering stage)
-    const distKm = getDistanceFromLatLonInKm(lat, lng, issue.location.lat, issue.location.lng);
+    const issueLat = (issue.location?.lat && issue.location.lat !== 0) ? issue.location.lat : 30.7333;
+    const issueLng = (issue.location?.lng && issue.location.lng !== 0) ? issue.location.lng : 76.7794;
+    const distKm = getDistanceFromLatLonInKm(effectiveLat, effectiveLng, issueLat, issueLng);
     const distMeters = Math.round(distKm * 1000);
 
-    // Hard cutoff: outside 500m is never considered the same localized physical issue
+    // Hard cutoff: outside municipal boundary is never considered the same physical issue
     if (distMeters > DUPLICATE_CONFIG.MAX_CANDIDATE_RADIUS_METERS) {
       continue;
     }
@@ -518,11 +528,15 @@ export const detectDuplicates = async (
     if (distMeters <= 50) {
       locationScore = 1.0;
     } else if (distMeters <= DUPLICATE_CONFIG.NEARBY_RADIUS_METERS) {
-      locationScore = 0.85 + 0.15 * (1 - (distMeters - 50) / 50);
-    } else if (distMeters <= DUPLICATE_CONFIG.EXTENDED_RADIUS_METERS) {
-      locationScore = 0.4 + 0.45 * (1 - (distMeters - 100) / 200);
+      locationScore = 0.90 + 0.10 * (1 - (distMeters - 50) / 150);
+    } else if (distMeters <= 800) {
+      locationScore = 0.65 + 0.25 * (1 - (distMeters - 200) / 600);
+    } else if (distMeters <= 2500) {
+      locationScore = 0.35 + 0.30 * (1 - (distMeters - 800) / 1700);
+    } else if (distMeters <= 5000) {
+      locationScore = 0.15 + 0.20 * (1 - (distMeters - 2500) / 2500);
     } else {
-      locationScore = 0.4 * (1 - (distMeters - 300) / 200);
+      locationScore = 0.05;
     }
 
     // 2. Category similarity (0.0 to 1.0)
@@ -596,19 +610,22 @@ export const detectDuplicates = async (
       );
     }
 
-    // Bonus for same user submitting the same issue twice in nearby location
-    if (isSameUser && locationScore >= 0.7 && categoryScore >= 0.75) {
-      compositeScore = Math.min(100, compositeScore + 15);
+    // Bonus for same user submitting the same issue twice (Requirement 8)
+    if (isSameUser && categoryScore >= 0.75 && (descriptionScore >= 0.35 || imageSimilarity >= 0.6)) {
+      compositeScore = Math.min(100, compositeScore + 20);
     }
 
     // Bonus for high visual match + close proximity
-    if (imageSimilarity >= 0.85 && locationScore >= 0.8) {
-      compositeScore = Math.min(100, compositeScore + 10);
+    if (imageSimilarity >= 0.80 && locationScore >= 0.5) {
+      compositeScore = Math.min(100, compositeScore + 15);
     }
 
-    // Penalize if location is not close (> 250m)
-    if (distMeters > 250) {
-      compositeScore = compositeScore * 0.6;
+    // Significant distance penalty (Requirement 9: same photo but completely different location)
+    if (distMeters > 5000) {
+      compositeScore = compositeScore * 0.65;
+    }
+    if (distMeters > 15000) {
+      compositeScore = compositeScore * 0.2;
     }
 
     const finalSimilarity = Math.round(compositeScore);

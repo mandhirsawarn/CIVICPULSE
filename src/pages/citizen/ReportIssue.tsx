@@ -829,12 +829,16 @@ const ReportIssue = () => {
     setIsAnalyzing(true);
     const finalDescription = (typeof customDescription === 'string' ? customDescription : description).trim();
     
+    // Always use valid coordinates (fallback to Chandigarh center if pending)
+    const effectiveLat = coordinates?.lat ?? 30.7333;
+    const effectiveLng = coordinates?.lng ?? 76.7794;
+
     try {
       const [analysis, dupes] = await Promise.all([
         analyzeIssue(photo, finalDescription, (urgency || 'MODERATE') as Urgency, (category || 'Other') as IssueCategory),
         detectDuplicates(
-          coordinates?.lat || 0,
-          coordinates?.lng || 0,
+          effectiveLat,
+          effectiveLng,
           (category || 'Other') as IssueCategory,
           finalDescription,
           issues,
@@ -851,6 +855,13 @@ const ReportIssue = () => {
       setIsAnalyzing(false);
     }
   };
+
+  // Automatically trigger AI and duplicate analysis when entering Step 4 if not yet analyzed
+  useEffect(() => {
+    if (step === 4 && !duplicateResult && !isAnalyzing) {
+      runAnalysis();
+    }
+  }, [step, duplicateResult, isAnalyzing]);
 
   // Final submit handler
   const handleSubmit = () => {
@@ -1653,6 +1664,41 @@ const ReportIssue = () => {
                 )}
               </div>
               
+              {/* Quick Landmark Presets for Testing & Municipal Navigation */}
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Quick Locations / Existing Reports</span>
+                  <span className="text-[10px] text-slate-400">Tap to set coordinates</span>
+                </div>
+                <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                  {[
+                    { label: 'Sector 47 (Univ Rd - Pothole CP-1047)', lat: 30.7052, lng: 76.7465, addr: 'Sector 47, University Road, Chandigarh' },
+                    { label: 'Sector 45 (Market - Waterlogging CP-1051)', lat: 30.7030, lng: 76.7420, addr: 'Sector 45 Market, Chandigarh' },
+                    { label: 'Sector 46 (Streetlight CP-1039)', lat: 30.7085, lng: 76.7490, addr: 'Sector 46 Residential Area, Chandigarh' },
+                    { label: 'Sector 47 (Garbage CP-1062)', lat: 30.7060, lng: 76.7480, addr: 'Sector 47 Market, Chandigarh' },
+                    { label: 'Sector 17 Plaza (Central)', lat: 30.7333, lng: 76.7794, addr: 'Sector 17 Plaza, Chandigarh' }
+                  ].map(preset => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setCoordinates({ lat: preset.lat, lng: preset.lng });
+                        setLocationStr(preset.addr);
+                        setLocationSource('Manual');
+                      }}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer",
+                        coordinates && Math.abs(coordinates.lat - preset.lat) < 0.001 && Math.abs(coordinates.lng - preset.lng) < 0.001
+                          ? "bg-slate-900 text-white border-slate-900 shadow-xs font-bold"
+                          : "bg-white text-slate-700 border-slate-200/80 hover:bg-slate-50"
+                      )}
+                    >
+                      📍 {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Interactive Map Container */}
               <div className={cn("rounded-2xl border border-slate-200/80 h-72 mb-4 relative overflow-hidden bg-slate-100 shadow-xs", isDropPinMode ? "ring-2 ring-slate-900 cursor-crosshair" : "")}>
                 {coordinates ? (
@@ -1815,8 +1861,21 @@ const ReportIssue = () => {
               />
 
               <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1">
+                {/* ACTIVE AI & DUPLICATE CHECKING STATE */}
+                {isAnalyzing && (
+                  <div className="rounded-2xl p-4 border border-blue-200 bg-blue-50/60 flex items-center gap-3 shadow-xs animate-pulse">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Loader2 size={16} className="animate-spin" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-slate-900">Checking for duplicate reports & routing...</div>
+                      <div className="text-[11px] text-slate-500">Cross-referencing photos, GPS proximity, category, and municipal records</div>
+                    </div>
+                  </div>
+                )}
+
                 {/* PRE-SUBMIT DUPLICATE REPORT WARNING */}
-                {duplicateResult && duplicateResult.isDuplicate && duplicateResult.relatedIssues.length > 0 && (() => {
+                {!isAnalyzing && duplicateResult && duplicateResult.isDuplicate && duplicateResult.relatedIssues.length > 0 && (() => {
                   const topDup = duplicateResult.relatedIssues[0];
                   const isHigh = topDup.confidence === 'HIGH';
                   const hasSupported = supportedDuplicateId === topDup.issue.id || topDup.issue.userVotes?.[currentUser?.id || ''] === 'up';
@@ -1985,6 +2044,24 @@ const ReportIssue = () => {
                     </div>
                   );
                 })()}
+
+                {/* VERIFIED UNIQUE REPORT STATE */}
+                {!isAnalyzing && duplicateResult && (!duplicateResult.isDuplicate || duplicateResult.relatedIssues.length === 0) && (
+                  <div className="rounded-2xl p-3.5 border border-emerald-200/80 bg-emerald-50/50 flex items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                        <CheckCircle2 size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900">Unique Issue Verified</div>
+                        <div className="text-[11px] text-slate-500 truncate">No duplicate reports detected in this vicinity. Ready for fresh municipal routing.</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 shrink-0">
+                      ✓ Verified Unique
+                    </span>
+                  </div>
+                )}
 
                 {/* Issue Summary Card */}
                 <div className="border border-slate-200/80 rounded-2xl p-5 bg-white shadow-xs space-y-4">
