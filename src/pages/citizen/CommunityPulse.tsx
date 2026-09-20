@@ -195,7 +195,7 @@ const CommunityPulse = () => {
         <div className="flex items-center gap-2">
           <Info size={15} className="text-blue-600 shrink-0" />
           <span>
-            <strong>Community Impact Signal:</strong> Community support is an active factor in authority escalation and SLA dispatch.
+            <strong>Community Prioritization Signal:</strong> Community support contributes to priority ranking, but does not guarantee automatic government dispatch or legal mandates.
           </span>
         </div>
         <span className="text-[11px] font-semibold hidden sm:inline text-blue-700">

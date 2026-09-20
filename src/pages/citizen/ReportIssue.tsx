@@ -44,11 +44,10 @@ const CATEGORIES = [
 
 const STEPS = [
   { num: '01', title: 'Details' },
-  { num: '02', title: 'Urgency' },
-  { num: '03', title: 'Evidence' },
-  { num: '04', title: 'Location' },
-  { num: '05', title: 'Review' },
-  { num: '06', title: 'Submit' }
+  { num: '02', title: 'Evidence' },
+  { num: '03', title: 'Location' },
+  { num: '04', title: 'Review' },
+  { num: '05', title: 'Submit' }
 ];
 
 
@@ -79,7 +78,7 @@ const ReportIssue = () => {
   const [step, setStep] = useState(1);
   const [category, setCategory] = useState<string>('');
   const [description, setDescription] = useState('');
-  const [urgency, setUrgency] = useState<Urgency | ''>('');
+  const [urgency, setUrgency] = useState<Urgency | ''>('MODERATE');
   const [photo, setPhoto] = useState<string | null>(null);
   
   // Location states
@@ -185,7 +184,7 @@ const ReportIssue = () => {
       if (reportDraft.contactPhone) setContactPhone(reportDraft.contactPhone);
       if (reportDraft.contactEmail) setContactEmail(reportDraft.contactEmail);
       if (reportDraft.aiResult) setAiResult(reportDraft.aiResult);
-      if (reportDraft.step) setStep(Math.min(reportDraft.step, 5));
+      if (reportDraft.step) setStep(Math.min(reportDraft.step, 4));
       if (reportDraft.photo) {
         setPhoto(reportDraft.photo);
       } else {
@@ -206,7 +205,7 @@ const ReportIssue = () => {
     clearReportDraft();
     setCategory('');
     setDescription('');
-    setUrgency('');
+    setUrgency('MODERATE');
     setPhoto(null);
     setCoordinates(null);
     setLocationStr('Fetching location...');
@@ -220,7 +219,7 @@ const ReportIssue = () => {
 
   // Update draft as user edits
   useEffect(() => {
-    if (step < 6) {
+    if (step < 5) {
       updateReportDraft({
         category,
         description,
@@ -674,9 +673,9 @@ const ReportIssue = () => {
       setLocationStr(paramAddr || 'Selected location');
       setLocationSource('Search');
       if (step === 1) {
-        setStep(4);
+        setStep(3);
       }
-    } else if (step === 4 && !coordinates && !isLocating) {
+    } else if (step === 3 && !coordinates && !isLocating) {
       fetchLiveLocation();
     }
   }, [step, routerLocation.search]);
@@ -884,7 +883,7 @@ const ReportIssue = () => {
       
       clearReportDraft();
       setStorageError(false);
-      setStep(6);
+      setStep(5);
     } catch (error) {
       console.error("Storage error when submitting issue:", error);
       setStorageError(true);
@@ -1301,6 +1300,42 @@ const ReportIssue = () => {
                 {!description.trim() && category && <p className="text-xs text-amber-600 mt-2 font-medium">Please enter or record an issue description</p>}
               </div>
 
+              {/* Urgency Level Selector */}
+              <div className="mb-5">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Urgency Level *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {[
+                    { id: 'URGENT', icon: '🚨', title: 'URGENT', desc: 'Safety hazard' },
+                    { id: 'HIGH', icon: '⚠️', title: 'HIGH', desc: 'Urgent attention' },
+                    { id: 'MODERATE', icon: '⚡', title: 'MODERATE', desc: 'Normal issue' },
+                    { id: 'LOW', icon: '🌱', title: 'LOW', desc: 'Minor repair' }
+                  ].map(u => {
+                    const isSelected = (urgency || 'MODERATE') === u.id;
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => setUrgency(u.id as Urgency)}
+                        className={cn(
+                          "flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer",
+                          isSelected 
+                            ? "border-slate-900 bg-slate-50 shadow-xs ring-1 ring-slate-900 font-bold" 
+                            : "border-slate-200/80 hover:bg-slate-50 bg-white"
+                        )}
+                      >
+                        <span className="text-base select-none">{u.icon}</span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 leading-tight">{u.title}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{u.desc}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="flex justify-end mt-auto pt-4 border-t border-slate-100">
                 <Button 
                   onClick={() => {
@@ -1317,70 +1352,11 @@ const ReportIssue = () => {
             </motion.div>
           )}
 
-          {/* STEP 2: URGENCY */}
+          {/* STEP 2: EVIDENCE (Camera Capture + Gallery Upload + Image Controls) */}
           {step === 2 && (
             <motion.div key="step2" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
                 <button onClick={() => setStep(1)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
-                  <ChevronLeft size={16} className="mr-1" /> Back
-                </button>
-              </div>
-              <PageHeader 
-                title="Urgency Level" 
-                description="How urgently should this civic issue be addressed?" 
-                className="mb-6"
-              />
-              
-              <div className="flex flex-col gap-3 flex-1 mb-8">
-                {[
-                  { id: 'URGENT', icon: '🚨', title: 'URGENT', desc: 'Immediate attention required — safety risk or serious public hazard', activeColor: 'border-red-500 bg-red-50/70 text-red-900 ring-2 ring-red-500/20' },
-                  { id: 'HIGH', icon: '⚠️', title: 'HIGH', desc: 'Should be addressed as soon as possible', activeColor: 'border-amber-500 bg-amber-50/70 text-amber-900 ring-2 ring-amber-500/20' },
-                  { id: 'MODERATE', icon: '⚡', title: 'MODERATE', desc: 'Needs attention but does not pose an immediate danger', activeColor: 'border-blue-500 bg-blue-50/70 text-blue-900 ring-2 ring-blue-500/20' },
-                  { id: 'LOW', icon: '🌱', title: 'LOW', desc: 'Minor issue that can be addressed during routine maintenance', activeColor: 'border-emerald-500 bg-emerald-50/70 text-emerald-900 ring-2 ring-emerald-500/20' }
-                ].map(u => {
-                  const isSelected = urgency === u.id;
-                  return (
-                    <button
-                      key={u.id}
-                      onClick={() => setUrgency(u.id as Urgency)}
-                      className={cn(
-                        "flex items-start text-left p-4 rounded-2xl border transition-all duration-180 hover:-translate-y-0.5 focus:outline-none cursor-pointer",
-                        isSelected 
-                          ? cn(u.activeColor, "shadow-xs font-semibold") 
-                          : "border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-[0_4px_20px_rgba(15,23,42,0.04)]"
-                      )}
-                    >
-                      <span className="text-2xl mr-3.5 select-none">{u.icon}</span>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-slate-900 mb-0.5 text-sm tracking-wide">{u.title}</h4>
-                        <p className="text-xs text-slate-500 leading-relaxed">{u.desc}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              
-              <div className="flex justify-between items-center mt-auto pt-4 border-t border-slate-100">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setStep(1)} 
-                  className="font-semibold text-slate-600"
-                >
-                  <ChevronLeft size={16} className="mr-1" /> Back
-                </Button>
-                <Button onClick={() => setStep(3)} disabled={!urgency} size="lg" className="px-8 font-bold">
-                  Continue <ChevronRight size={18} className="ml-1" />
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* STEP 3: EVIDENCE (Camera Capture + Gallery Upload + Image Controls) */}
-          {step === 3 && (
-            <motion.div key="step3" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
-              <div className="mb-4">
-                <button onClick={() => setStep(2)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </button>
               </div>
@@ -1504,13 +1480,13 @@ const ReportIssue = () => {
                 <Button 
                   type="button" 
                   variant="outline" 
-                  onClick={() => setStep(2)} 
+                  onClick={() => setStep(1)} 
                   className="font-semibold text-slate-600"
                 >
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </Button>
                 <Button 
-                  onClick={() => setStep(4)} 
+                  onClick={() => setStep(3)} 
                   disabled={!photo || isCompressing} 
                   size="lg" 
                   className="px-8 font-bold"
@@ -1521,11 +1497,11 @@ const ReportIssue = () => {
             </motion.div>
           )}
 
-          {/* STEP 4: LOCATION (Interactive Leaflet Map + Satellite + Search) */}
-          {step === 4 && (
-            <motion.div key="step4" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
+          {/* STEP 3: LOCATION (Interactive Leaflet Map + Satellite + Search) */}
+          {step === 3 && (
+            <motion.div key="step3" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
-                <button onClick={() => setStep(3)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+                <button onClick={() => setStep(2)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </button>
               </div>
@@ -1735,7 +1711,7 @@ const ReportIssue = () => {
                   <Button 
                     type="button" 
                     variant="outline" 
-                    onClick={() => setStep(3)} 
+                    onClick={() => setStep(2)} 
                     className="font-semibold text-slate-600"
                   >
                     <ChevronLeft size={16} className="mr-1" /> Back
@@ -1751,7 +1727,7 @@ const ReportIssue = () => {
                 </div>
                 <Button 
                   onClick={() => {
-                    setStep(5);
+                    setStep(4);
                     runAnalysis();
                   }} 
                   disabled={!coordinates || isAnalyzing} 
@@ -1770,11 +1746,11 @@ const ReportIssue = () => {
             </motion.div>
           )}
 
-          {/* STEP 5: REVIEW & AI ANALYSIS */}
-          {step === 5 && (
-            <motion.div key="step5" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
+          {/* STEP 4: REVIEW & AI ANALYSIS */}
+          {step === 4 && (
+            <motion.div key="step4" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
-                <button onClick={() => setStep(4)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+                <button onClick={() => setStep(3)} className="flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
                   <ChevronLeft size={16} className="mr-1" /> Back
                 </button>
               </div>
@@ -1960,7 +1936,7 @@ const ReportIssue = () => {
                 <Button 
                   type="button" 
                   variant="outline" 
-                  onClick={() => setStep(4)} 
+                  onClick={() => setStep(3)} 
                   className="font-semibold text-slate-600 h-12 px-5"
                 >
                   <ChevronLeft size={16} className="mr-1" /> Edit
@@ -1982,9 +1958,9 @@ const ReportIssue = () => {
             </motion.div>
           )}
 
-          {/* STEP 6: SUBMIT SUCCESS & AI VERIFICATION */}
-          {step === 6 && (
-            <motion.div key="step6" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col items-center justify-center h-full py-8 text-center">
+          {/* STEP 5: SUBMIT SUCCESS & AI VERIFICATION */}
+          {step === 5 && (
+            <motion.div key="step5" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col items-center justify-center h-full py-8 text-center">
               <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-200/60 flex items-center justify-center mb-4 shadow-xs">
                 <CheckCircle2 size={36} />
               </div>

@@ -16,9 +16,14 @@ import {
   ThumbsDown,
   Layers,
   PhoneCall,
-  Flame,
+  Sparkles,
   ShieldCheck,
-  Check
+  Check,
+  Building2,
+  FileCheck,
+  HelpCircle,
+  BrainCircuit,
+  Info
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { cn } from '../../utils/cn';
@@ -37,6 +42,7 @@ const Home = () => {
   
   // Real data calculations with graceful fallbacks
   const activeCityIssues = issues.filter(i => i.status !== 'RESOLVED' && i.status !== 'CITIZEN_VERIFIED').length || 23;
+  const underReviewCount = issues.filter(i => i.status === 'REPORTED' || i.status === 'AI_VERIFIED').length || 11;
   const resolvedCount = issues.filter(i => i.status === 'RESOLVED' || i.status === 'CITIZEN_VERIFIED').length || 8;
   const totalReportsCount = issues.length || 24;
 
@@ -67,12 +73,12 @@ const Home = () => {
 
   // Official emergency helplines
   const emergencyHelplines = [
+    { name: 'National Emergency', num: '112', primary: true },
     { name: 'Police', num: '100' },
-    { name: 'Fire', num: '101' },
+    { name: 'Fire Control', num: '101' },
     { name: 'Ambulance', num: '108' },
-    { name: 'Women', num: '1091' },
-    { name: 'Childline', num: '1098' },
-    { name: 'Road Crash', num: '1073' },
+    { name: 'Women Helpline', num: '1091' },
+    { name: 'Child Helpline', num: '1098' },
     { name: 'Cyber Crime', num: '1930' }
   ];
 
@@ -80,10 +86,9 @@ const Home = () => {
     <motion.div className="space-y-12 sm:space-y-16" variants={containerVariants} initial="hidden" animate="show">
       
       {/* ============================================================
-          1. HERO SECTION & LIVE CITY PULSE PANEL
+          1. HERO SECTION & SUBTLE PRODUCT STORYTELLING
           ============================================================ */}
       <motion.section variants={itemVariants} className="pt-2 sm:pt-4 relative">
-        {/* Subtle background enhancement (civic grid + light radial glow) */}
         <div className="pointer-events-none absolute -inset-x-4 -top-8 -bottom-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent opacity-70 -z-10" />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
@@ -95,13 +100,13 @@ const Home = () => {
               CIVICPULSE • CITIZEN INTELLIGENCE
             </div>
 
-            <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900 leading-[1.12]">
+            <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900 leading-[1.14]">
               Report an issue.<br />
               <span className="text-blue-600">Help improve your city.</span>
             </h1>
 
             <p className="text-base sm:text-lg text-slate-600 max-w-xl leading-relaxed">
-              Report potholes, garbage, damaged roads, broken streetlights and other civic issues. CivicPulse helps prioritize, route and track issues from report to resolution.
+              Report civic problems with your phone. CivicPulse uses AI, location intelligence and community signals to help route, prioritize and track issues.
             </p>
 
             {/* CTAs */}
@@ -128,10 +133,29 @@ const Home = () => {
               </Link>
             </div>
 
-            {/* Small Trust Line */}
-            <div className="pt-2 flex items-center gap-2 text-xs font-medium text-slate-500">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              <span>AI-assisted • Location-aware • Community-powered</span>
+            {/* Subtle Resolution Flow Visual: Report -> AI understands -> Authority acts -> Citizen verifies */}
+            <div className="pt-4 border-t border-slate-200/60">
+              <div className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                How CivicPulse works:
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-200/70 text-xs font-semibold text-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-black shrink-0">1</span>
+                  <span className="truncate">Report</span>
+                </div>
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-200/70 text-xs font-semibold text-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-black shrink-0">2</span>
+                  <span className="truncate">AI understands</span>
+                </div>
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-200/70 text-xs font-semibold text-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-black shrink-0">3</span>
+                  <span className="truncate">Authority acts</span>
+                </div>
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-200/70 text-xs font-semibold text-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black shrink-0">4</span>
+                  <span className="truncate">Citizen verifies</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -153,8 +177,8 @@ const Home = () => {
                     </div>
                   </div>
                 </div>
-                <Badge variant="outline" className="text-[10px] font-bold text-slate-500 border-slate-200">
-                  Ward Live Feed
+                <Badge variant="outline" className="text-[9.5px] font-bold text-amber-700 bg-amber-50 border-amber-200">
+                  Prototype / Demo Data
                 </Badge>
               </div>
 
@@ -212,37 +236,44 @@ const Home = () => {
       </motion.section>
 
       {/* ============================================================
-          2. CITY PULSE SNAPSHOT SECTION
+          2. CITY PULSE / LIVE CIVIC OVERVIEW
           ============================================================ */}
       <motion.section variants={itemVariants}>
-        <SectionHeader 
-          eyebrow="CITY PULSE" 
-          title="What's happening across your community" 
-          description="Aggregated civic activity, resolution speed, and public participation metrics."
-        />
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-4">
+          <SectionHeader 
+            eyebrow="CITY PULSE" 
+            title="What's happening across your community" 
+            description="Aggregated civic activity, resolution speed, and public participation metrics."
+          />
+          <Badge variant="outline" className="text-[10px] font-bold text-slate-500 bg-slate-50 border-slate-200 self-start sm:self-auto shrink-0 mb-4">
+            Prototype / Demo Data
+          </Badge>
+        </div>
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard 
-            title="Active Issues" 
-            value={activeCityIssues} 
-            icon={AlertCircle} 
-            trend="Monitored in real-time" 
+            title="Issues Reported" 
+            value={totalReportsCount} 
+            icon={Activity} 
+            trend="Total citizen submissions" 
             trendUp={true} 
+            valueColor="text-slate-900"
           />
           <StatCard 
             title="Resolved" 
             value={resolvedCount} 
             icon={CheckCircle2} 
-            trend="Verified by citizens" 
+            trend="Verified by local citizens" 
             trendUp={true} 
             valueColor="text-emerald-700" 
           />
           <StatCard 
-            title="Community Reports" 
-            value={totalReportsCount} 
-            icon={Users} 
-            trend="Citizen submitted" 
+            title="Under Review" 
+            value={underReviewCount} 
+            icon={AlertCircle} 
+            trend="Triaged by municipal AI" 
             trendUp={true} 
-            valueColor="text-blue-700" 
+            valueColor="text-amber-700" 
           />
           <StatCard 
             title="Average Resolution" 
@@ -250,12 +281,13 @@ const Home = () => {
             icon={Clock} 
             trend="Target SLA window" 
             trendUp={true} 
+            valueColor="text-blue-700"
           />
         </div>
       </motion.section>
 
       {/* ============================================================
-          3. RECENT CIVIC ISSUES (PRODUCT CARDS)
+          3. RECENT REPORTS (COMPACT, 35-45% SHORTER, 3 CARDS IN A ROW)
           ============================================================ */}
       <motion.section variants={itemVariants}>
         <SectionHeader 
@@ -273,7 +305,7 @@ const Home = () => {
           }
         />
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-4.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {issues.slice(0, 3).map((issue) => {
             const locality = getApproximateLocality(issue.location?.address, issue.location?.ward, issue.location?.zone);
             const upvotes = issue.upvotes || 0;
@@ -288,8 +320,8 @@ const Home = () => {
                 className="overflow-hidden group hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(15,23,42,0.06)] transition-all duration-200 border-slate-200/80 flex flex-col rounded-2xl bg-white"
               >
                 <Link to={`/issue/${issue.id}`} className="flex flex-col h-full">
-                  {/* Compact ~155px Image Preview with Status Badge */}
-                  <div className="relative h-[155px] sm:h-[160px] w-full overflow-hidden bg-slate-100 shrink-0">
+                  {/* Compact ~150-165px Image Preview */}
+                  <div className="relative h-[150px] sm:h-[160px] w-full overflow-hidden bg-slate-100 shrink-0">
                     {issue.photos && issue.photos[0] ? (
                       <img 
                         src={issue.photos[0]} 
@@ -299,18 +331,18 @@ const Home = () => {
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-1 bg-gradient-to-br from-slate-50 to-slate-100">
                         <span className="text-2xl">{getCategoryEmoji(issue.category)}</span>
-                        <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wider">{issue.category}</span>
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{issue.category}</span>
                       </div>
                     )}
                     <div className="absolute top-2.5 right-2.5 z-10">
-                      <Badge variant={getStatusVariant(issue.status)} className="shadow-xs bg-white/95 backdrop-blur-xs font-bold text-[9.5px] uppercase tracking-wider py-0.5 px-2">
+                      <Badge variant={getStatusVariant(issue.status)} className="shadow-xs bg-white/95 backdrop-blur-xs font-bold text-[9px] uppercase tracking-wider py-0.5 px-2">
                         {issue.status.replace('_', ' ')}
                       </Badge>
                     </div>
                   </div>
 
                   {/* Compact Card Body */}
-                  <div className="p-3.5 sm:p-4 flex flex-col flex-1 gap-2">
+                  <div className="p-3.5 flex flex-col flex-1 gap-2">
                     <div>
                       <div className="text-[9.5px] font-bold text-blue-600 uppercase tracking-wider">
                         {issue.category}
@@ -330,9 +362,9 @@ const Home = () => {
                       </span>
                     </div>
 
-                    {/* Streamlined Community Support Bar */}
+                    {/* Compact Community Support Bar */}
                     <div className="bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5">
-                      <div className="flex items-center justify-between text-[10.5px] mb-1">
+                      <div className="flex items-center justify-between text-[10px] mb-1">
                         <span className="text-slate-500 font-medium">Community Support</span>
                         <span className="font-bold text-slate-800 tabular-nums">{supportPercent}%</span>
                       </div>
@@ -344,9 +376,10 @@ const Home = () => {
                       </div>
                     </div>
 
+                    {/* Bottom Action Area */}
                     <div className="pt-2 border-t border-slate-100 mt-auto flex items-center justify-between">
                       <PriorityBadge priority={issue.priority || issue.citizenUrgency} score={issue.priorityScore} size="sm" />
-                      <span className="inline-flex items-center gap-1 text-[11.5px] font-bold text-blue-600 group-hover:text-blue-700">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 group-hover:text-blue-700">
                         <span>View Report</span>
                         <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
                       </span>
@@ -360,13 +393,13 @@ const Home = () => {
       </motion.section>
 
       {/* ============================================================
-          4. COMMUNITY PULSE HERO FEATURE
+          4. COMMUNITY PULSE (CITIZEN SIGNALS & VOTING)
           ============================================================ */}
       <motion.section variants={itemVariants}>
         <SectionHeader 
           eyebrow="COMMUNITY PULSE" 
-          title="Your community helps highlight what needs attention." 
-          description="Collective voting and neighborhood validation signal where municipal attention is required most."
+          title="Community signals highlight what needs attention" 
+          description="Residents can support or flag local issues. Collective signals help identify neighborhood priorities."
           action={
             <Link 
               to="/community-pulse" 
@@ -377,8 +410,16 @@ const Home = () => {
             </Link>
           }
         />
+
+        {/* Clear Prioritization Disclaimer */}
+        <div className="bg-blue-50/60 border border-blue-200/60 rounded-xl p-3 mb-5 flex items-center gap-2.5 text-xs text-slate-700">
+          <Info size={16} className="text-blue-600 shrink-0" />
+          <span>
+            <strong>Democratic Signal:</strong> Community support contributes directly to priority ranking, but does not guarantee automatic government dispatch or bypass safety triage.
+          </span>
+        </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {issues
             .slice()
             .sort((a, b) => ((b.upvotes || 0) - (b.downvotes || 0)) - ((a.upvotes || 0) - (a.downvotes || 0)))
@@ -389,44 +430,55 @@ const Home = () => {
               const totalVotes = upvotes + downvotes;
               const supportPercent = totalVotes > 0 ? Math.round((upvotes / totalVotes) * 100) : 72;
               const locality = getApproximateLocality(issue.location?.address, issue.location?.ward, issue.location?.zone);
+              const userVote = issue.userVotes ? issue.userVotes[userId] : undefined;
+
+              const handleVote = (e: React.MouseEvent, type: 'up' | 'down') => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (userVote === type) {
+                  voteIssue(issue.id, null);
+                } else {
+                  voteIssue(issue.id, type);
+                }
+              };
 
               return (
                 <Card 
                   key={issue.id} 
-                  className="flex flex-col justify-between hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(15,23,42,0.06)] transition-all duration-200 group border-slate-200/80 p-5 rounded-2xl"
+                  className="flex flex-col justify-between hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(15,23,42,0.06)] transition-all duration-200 group border-slate-200/80 p-4 sm:p-5 rounded-2xl bg-white"
                 >
                   <div>
                     {/* Top Row: Category Icon & Title */}
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-xl shrink-0 group-hover:scale-105 transition-transform">
+                    <div className="flex items-start gap-2.5 mb-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-lg shrink-0 group-hover:scale-105 transition-transform">
                         {getCategoryEmoji(issue.category)}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
+                          <span className="text-[9.5px] font-bold text-blue-600 uppercase tracking-wider">
                             {issue.category}
                           </span>
                           <PriorityBadge priority={issue.priority || issue.citizenUrgency} size="sm" />
                         </div>
-                        <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-snug line-clamp-1 group-hover:text-blue-600 transition-colors mt-0.5">
+                        <h3 className="font-bold text-slate-900 text-sm leading-snug line-clamp-1 group-hover:text-blue-600 transition-colors mt-0.5">
                           {issue.title}
                         </h3>
                       </div>
                     </div>
 
                     {/* Location Metadata */}
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3.5">
-                      <MapPin size={12} className="text-blue-600 shrink-0" />
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
+                      <MapPin size={11} className="text-blue-600 shrink-0" />
                       <span className="truncate">{locality}</span>
                     </div>
 
-                    {/* Clean Horizontal Community Attention Indicator */}
-                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-3">
-                      <div className="flex items-center justify-between text-[11px] mb-1.5 font-medium">
-                        <span className="text-slate-500">Community attention</span>
+                    {/* Horizontal Community Attention Indicator */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 mb-3">
+                      <div className="flex items-center justify-between text-[10.5px] mb-1 font-medium">
+                        <span className="text-slate-500">Community Support</span>
                         <span className="font-extrabold text-slate-900 tabular-nums">{supportPercent}%</span>
                       </div>
-                      <div className="w-full bg-slate-200/70 h-2 rounded-full overflow-hidden">
+                      <div className="w-full bg-slate-200/70 h-1.5 rounded-full overflow-hidden">
                         <div 
                           className="bg-blue-600 h-full rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(10, supportPercent))}%` }}
@@ -434,32 +486,52 @@ const Home = () => {
                       </div>
                     </div>
 
-                    {/* Upvote & Downvote metrics */}
-                    <div className="flex items-center gap-3 text-xs text-slate-600 font-semibold mb-2">
-                      <span className="flex items-center gap-1 text-slate-800">
-                        <span className="text-emerald-600 font-bold">↑ {upvotes}</span>
-                      </span>
-                      <span className="text-slate-300">•</span>
-                      <span className="flex items-center gap-1 text-slate-800">
-                        <span className="text-rose-600 font-bold">↓ {downvotes}</span>
-                      </span>
-                      <span className="text-slate-300">•</span>
-                      <Badge variant={getStatusVariant(issue.status)} className="text-[10px]">
+                    {/* Interactive Upvote & Downvote Buttons */}
+                    <div className="flex items-center justify-between gap-2 pt-1 pb-2">
+                      <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200/70">
+                        <button
+                          type="button"
+                          onClick={(e) => handleVote(e, 'up')}
+                          className={cn(
+                            "flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer",
+                            userVote === 'up' ? "bg-blue-600 text-white shadow-xs" : "text-slate-700 hover:bg-white"
+                          )}
+                          title="Support this report"
+                        >
+                          <ThumbsUp size={12} className={userVote === 'up' ? "fill-white" : ""} />
+                          <span className="tabular-nums">{upvotes}</span>
+                        </button>
+                        <div className="w-px h-3 bg-slate-300 mx-0.5" />
+                        <button
+                          type="button"
+                          onClick={(e) => handleVote(e, 'down')}
+                          className={cn(
+                            "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold transition-all cursor-pointer",
+                            userVote === 'down' ? "bg-rose-600 text-white shadow-xs" : "text-slate-700 hover:bg-white"
+                          )}
+                          title="Flag / Downvote"
+                        >
+                          <ThumbsDown size={12} className={userVote === 'down' ? "fill-white" : ""} />
+                          <span className="tabular-nums">{downvotes}</span>
+                        </button>
+                      </div>
+
+                      <Badge variant={getStatusVariant(issue.status)} className="text-[9.5px]">
                         {issue.status.replace('_', ' ')}
                       </Badge>
                     </div>
                   </div>
 
                   {/* Footer Action */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-2">
-                    <span className="text-[11px] text-slate-400 font-medium">Verified by local residents</span>
+                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between mt-1">
+                    <span className="text-[10.5px] text-slate-400 font-medium">Local residents</span>
                     
                     <Link 
                       to={`/issue/${issue.id}`} 
                       className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 group/link"
                     >
                       <span>View Issue</span>
-                      <ArrowRight size={13} className="group-hover/link:translate-x-0.5 transition-transform" />
+                      <ArrowRight size={12} className="group-hover/link:translate-x-0.5 transition-transform" />
                     </Link>
                   </div>
                 </Card>
@@ -469,7 +541,72 @@ const Home = () => {
       </motion.section>
 
       {/* ============================================================
-          5. BEYOND INDIVIDUAL REPORTS (COLLABORATION)
+          5. HOW A REPORT GETS RESOLVED (CLEAR PRODUCT STORYTELLING)
+          ============================================================ */}
+      <motion.section variants={itemVariants}>
+        <SectionHeader 
+          eyebrow="RESOLUTION LIFECYCLE" 
+          title="How a report gets resolved" 
+          description="From your phone camera to municipal crew dispatch and on-ground citizen verification."
+        />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="p-5 rounded-2xl border-slate-200/80 bg-white space-y-3 relative overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600 font-black text-sm">
+              01
+            </div>
+            <h3 className="font-bold text-slate-900 text-sm">Citizen Reports</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Capture a photo, speak your description with native voice, and drop a precise GPS pin in under 60 seconds.
+            </p>
+            <div className="text-[11px] font-semibold text-blue-700 bg-blue-50/70 p-2 rounded-lg border border-blue-100">
+              ✓ Photo • Voice • Exact Pin
+            </div>
+          </Card>
+
+          <Card className="p-5 rounded-2xl border-slate-200/80 bg-white space-y-3 relative overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600 font-black text-sm">
+              02
+            </div>
+            <h3 className="font-bold text-slate-900 text-sm">AI Understands</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              CivicPulse categorizes the hazard, clusters duplicate reports in 250m, and calculates priority score for rapid triage.
+            </p>
+            <div className="text-[11px] font-semibold text-blue-700 bg-blue-50/70 p-2 rounded-lg border border-blue-100">
+              ✓ Triage • Duplicate Check • SLA
+            </div>
+          </Card>
+
+          <Card className="p-5 rounded-2xl border-slate-200/80 bg-white space-y-3 relative overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600 font-black text-sm">
+              03
+            </div>
+            <h3 className="font-bold text-slate-900 text-sm">Authority Acts</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Assigned to the relevant municipal department with a target SLA. Field crews update progress directly on the dashboard.
+            </p>
+            <div className="text-[11px] font-semibold text-blue-700 bg-blue-50/70 p-2 rounded-lg border border-blue-100">
+              ✓ Dept Dispatch • Field Tracking
+            </div>
+          </Card>
+
+          <Card className="p-5 rounded-2xl border-slate-200/80 bg-white space-y-3 relative overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-700 font-black text-sm">
+              04
+            </div>
+            <h3 className="font-bold text-slate-900 text-sm">Citizen Verifies</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Before and after photos are published. Nearby residents confirm the fix on the ground before the ticket permanently closes.
+            </p>
+            <div className="text-[11px] font-semibold text-emerald-800 bg-emerald-50/70 p-2 rounded-lg border border-emerald-100">
+              ✓ Before/After • Citizen Confirmed
+            </div>
+          </Card>
+        </div>
+      </motion.section>
+
+      {/* ============================================================
+          6. COLLABORATION (CHALLENGES & PARTNERS)
           ============================================================ */}
       <motion.section variants={itemVariants}>
         <SectionHeader 
@@ -486,12 +623,12 @@ const Home = () => {
           }
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
           {challenges.slice(0, 2).map((challenge) => (
-            <Card key={challenge.id} className="flex flex-col justify-between border-slate-200/80 p-6 rounded-2xl">
+            <Card key={challenge.id} className="flex flex-col justify-between border-slate-200/80 p-5 sm:p-6 rounded-2xl bg-white">
               <div>
                 <div className="flex justify-between items-start mb-3">
-                  <Badge variant={challenge.severity === 'CRITICAL' ? 'danger' : 'warning'} className="text-[10.5px] font-bold uppercase tracking-wider">
+                  <Badge variant={challenge.severity === 'CRITICAL' ? 'danger' : 'warning'} className="text-[10px] font-bold uppercase tracking-wider">
                     {challenge.severity} PRIORITY
                   </Badge>
                   <div className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200/60">
@@ -503,11 +640,16 @@ const Home = () => {
                   {challenge.description}
                 </p>
               </div>
+
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 mb-3 text-xs text-slate-600 flex items-center justify-between">
+                <span>Problem $\rightarrow$ Partner $\rightarrow$ Pilot</span>
+                <span className="font-bold text-slate-800">{challenge.proposalsCount} Proposals</span>
+              </div>
               
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-2">
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-1">
                 <div className="flex items-center text-xs text-slate-500 gap-1.5 font-medium">
                   <Users size={14} className="text-slate-400" /> 
-                  <span>{challenge.proposalsCount} Active proposals</span>
+                  <span>Active collaboration</span>
                 </div>
                 <Link to="/collaboration" className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 group">
                   <span>Explore challenge</span>
@@ -520,24 +662,24 @@ const Home = () => {
       </motion.section>
 
       {/* ============================================================
-          6. COMPACT HORIZONTAL EMERGENCY HELP STRIP
+          7. COMPACT EMERGENCY HELP STRIP (OFFICIAL NUMBERS ONLY)
           ============================================================ */}
       <motion.section variants={itemVariants}>
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-[0_4px_20px_rgba(15,23,42,0.03)] border-l-4 border-l-red-500 relative overflow-hidden">
-          <div className="flex flex-col lg:flex-row gap-6 items-center lg:items-start justify-between">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-6 shadow-[0_4px_20px_rgba(15,23,42,0.03)] border-l-4 border-l-red-500 relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row gap-5 items-center lg:items-start justify-between">
             
             {/* Left: 112 CTA and Advisory */}
-            <div className="lg:w-1/3 w-full space-y-2.5">
+            <div className="lg:w-1/3 w-full space-y-2">
               <div className="flex items-center gap-2 text-red-600">
-                <AlertCircle size={18} className="shrink-0" />
-                <span className="text-xs font-black uppercase tracking-wider">🚨 Emergency assistance</span>
+                <AlertCircle size={17} className="shrink-0" />
+                <span className="text-xs font-black uppercase tracking-wider">Emergency Helplines</span>
               </div>
               <div>
-                <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                  For immediate danger or emergencies:
+                <h3 className="text-base font-black text-slate-900 tracking-tight">
+                  Immediate danger or life hazard?
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                  CivicPulse is for non-emergency public infrastructure maintenance. For urgent safety risks, contact emergency responders:
+                  CivicPulse is for non-emergency public infrastructure issues. For life-threatening emergencies, call national emergency responders immediately:
                 </p>
               </div>
               <a href="tel:112" className="block w-full pt-1">
@@ -545,36 +687,43 @@ const Home = () => {
                   size="md" 
                   className="w-full bg-red-600 hover:bg-red-700 text-white font-bold gap-2 shadow-sm transition-all"
                 >
-                  <PhoneCall size={16} />
-                  <span>Call 112</span>
+                  <PhoneCall size={15} />
+                  <span>Call 112 (National Emergency)</span>
                 </Button>
               </a>
             </div>
 
-            {/* Right: Smaller Official Helplines */}
-            <div className="lg:w-2/3 w-full border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-6">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Official Dedicated Helplines (Toll-Free 24x7)
+            {/* Right: Official Dedicated Helplines */}
+            <div className="lg:w-2/3 w-full border-t lg:border-t-0 lg:border-l border-slate-100 pt-3 lg:pt-0 lg:pl-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider">
+                  Official 24x7 Helplines
                 </span>
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {emergencyHelplines.map((helpline) => (
-                  <a 
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {emergencyHelplines.filter(h => !h.primary).map((helpline) => (
+                  <div 
                     key={helpline.name} 
-                    href={`tel:${helpline.num}`} 
-                    className="block group"
+                    className="bg-slate-50/80 hover:bg-red-50/40 border border-slate-200/70 hover:border-red-200 rounded-xl p-2.5 flex items-center justify-between transition-all"
                   >
-                    <div className="bg-slate-50/80 hover:bg-red-50/50 border border-slate-200/70 hover:border-red-200 rounded-xl p-2.5 text-center transition-all">
-                      <div className="text-[10px] text-slate-500 font-semibold truncate group-hover:text-red-700">
+                    <div className="min-w-0 flex-1 mr-2">
+                      <div className="text-[10px] text-slate-500 font-semibold truncate">
                         {helpline.name}
                       </div>
-                      <div className="text-sm font-black text-slate-900 group-hover:text-red-600 tabular-nums">
+                      <div className="text-sm font-black text-slate-900 tabular-nums">
                         {helpline.num}
                       </div>
                     </div>
-                  </a>
+                    <a 
+                      href={`tel:${helpline.num}`}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600 bg-white hover:bg-red-600 hover:text-white border border-red-200 rounded-lg px-2 py-1 transition-colors shrink-0"
+                      title={`Call ${helpline.name}`}
+                    >
+                      <PhoneCall size={11} />
+                      <span>Call</span>
+                    </a>
+                  </div>
                 ))}
               </div>
             </div>

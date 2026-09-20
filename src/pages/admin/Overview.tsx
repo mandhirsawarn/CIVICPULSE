@@ -48,6 +48,11 @@ const AdminOverview = () => {
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Badge variant="outline" className="text-[10px] font-bold text-amber-700 bg-amber-50 border-amber-200">
+              Prototype / Demo Environment • Simulated Data
+            </Badge>
+          </div>
           <SectionHeader 
             eyebrow="OPERATIONAL COMMAND"
             title="City Operations Center" 
