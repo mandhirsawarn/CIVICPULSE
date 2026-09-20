@@ -22,6 +22,7 @@ import { compressImage } from '../../utils/imageCompression';
 import { fetchNominatimSearch, reverseGeocodeCoordinates, SearchResultItem } from '../../services/locationService';
 import { startNativeSpeechRecognition, SpeechRecognitionController, formatTranscript, detectLanguageFromText, clearOldWhisperCaches } from '../../services/transcriptionService';
 import { VoiceErrorBoundary } from '../../components/citizen/VoiceErrorBoundary';
+import { isValidEmailFormat } from '../../utils/emailValidation';
 
 // Fix Leaflet default marker icon paths in Vite
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -102,6 +103,7 @@ const ReportIssue = () => {
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [phoneError, setPhoneError] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   // Voice Recording & Speech-to-Text Strict State Machine (100% Browser SpeechRecognition)
   // Strict States: 'IDLE' -> 'RECORDING' -> 'PROCESSING' -> 'TRANSCRIBED' -> 'IDLE'
@@ -211,6 +213,8 @@ const ReportIssue = () => {
     setLocationStr('Fetching location...');
     setContactPhone('');
     setContactEmail('');
+    setPhoneError('');
+    setEmailError('');
     setAiResult(null);
     setStep(1);
     setShowConfirmStartNew(false);
@@ -840,6 +844,10 @@ const ReportIssue = () => {
   const handleSubmit = () => {
     if (contactPhone && contactPhone.length !== 10) {
       setPhoneError('Mobile number must contain 10 digits.');
+      return;
+    }
+    if (contactEmail.trim().length > 0 && !isValidEmailFormat(contactEmail.trim())) {
+      setEmailError('Please enter a valid email address.');
       return;
     }
     const finalDescription = description.trim();
@@ -1899,14 +1907,49 @@ const ReportIssue = () => {
                       )}
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-slate-700">Email Address</label>
+                        {contactEmail.trim().length > 0 && isValidEmailFormat(contactEmail.trim()) && (
+                          <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 animate-fade-in">
+                            <CheckCircle2 size={12} className="text-emerald-500" />
+                            <span>✓ Valid email address</span>
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="email"
                         placeholder="e.g. citizen@example.com"
-                        className="w-full p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-900 text-sm bg-white"
+                        className={cn(
+                          "w-full p-2.5 border rounded-xl focus:outline-none text-sm bg-white transition-colors",
+                          emailError 
+                            ? "border-red-500 focus:ring-1 focus:ring-red-500" 
+                            : contactEmail.trim().length > 0 && isValidEmailFormat(contactEmail.trim())
+                              ? "border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                              : "border-slate-200 focus:ring-1 focus:ring-slate-900"
+                        )}
                         value={contactEmail}
-                        onChange={(e) => setContactEmail(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setContactEmail(val);
+                          if (val.trim().length === 0) {
+                            setEmailError('');
+                          } else if (isValidEmailFormat(val.trim())) {
+                            setEmailError('');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (contactEmail.trim().length > 0 && !isValidEmailFormat(contactEmail.trim())) {
+                            setEmailError('Please enter a valid email address.');
+                          } else {
+                            setEmailError('');
+                          }
+                        }}
                       />
+                      {emailError && (
+                        <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1 animate-fade-in">
+                          <span>❌ {emailError}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

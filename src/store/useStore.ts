@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Issue, Department, FieldTeam, CivicChallenge, User, Hotspot, Notification, IssueCategory, Severity, ReportDraft } from '../types';
 import { mockIssues, mockDepartments, mockFieldTeams, mockChallenges, mockHotspots } from '../mockData';
+import { isValidEmailFormat } from '../utils/emailValidation';
 
 interface StoreState {
   currentUser: User | null;
@@ -58,7 +59,15 @@ export const useStore = create<StoreState>()(
       notifications: [],
       cityPulseScore: 84,
       reportDraft: null,
-      setCurrentUser: (user) => set({ currentUser: user }),
+      setCurrentUser: (user) => {
+        if (user && user.email && user.email.trim().length > 0) {
+          if (!isValidEmailFormat(user.email.trim())) {
+            console.warn('Rejected user with invalid email format:', user.email);
+            return;
+          }
+        }
+        set({ currentUser: user });
+      },
       
       setReportDraft: (draft) => set({ reportDraft: draft }),
       updateReportDraft: (updates) => set((state) => ({ 
@@ -146,6 +155,12 @@ export const useStore = create<StoreState>()(
       })),
       
       addIssue: (issue) => {
+        if (issue.contactEmail && issue.contactEmail.trim().length > 0) {
+          if (!isValidEmailFormat(issue.contactEmail.trim())) {
+            console.warn('Rejected issue with invalid contactEmail:', issue.contactEmail);
+            throw new Error('Please enter a valid email address.');
+          }
+        }
         set((state) => ({ issues: [issue, ...state.issues] }));
         get().recalculateHotspots();
         

@@ -6,6 +6,8 @@ import { useStore } from '../../store/useStore';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeader } from '../../components/ui/SectionHeader';
+import { isValidEmailFormat } from '../../utils/emailValidation';
+import { cn } from '../../utils/cn';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -29,11 +31,17 @@ const Profile = () => {
   const [isEditing, setIsEditing] = React.useState(false);
   const [editName, setEditName] = React.useState(currentUser?.name || '');
   const [editEmail, setEditEmail] = React.useState(currentUser?.email || '');
+  const [emailError, setEmailError] = React.useState('');
 
   const handleSave = () => {
-    if (currentUser) {
-      setCurrentUser({ ...currentUser, name: editName, email: editEmail });
+    if (!isValidEmailFormat(editEmail.trim())) {
+      setEmailError('Please enter a valid email address.');
+      return;
     }
+    if (currentUser) {
+      setCurrentUser({ ...currentUser, name: editName.trim(), email: editEmail.trim() });
+    }
+    setEmailError('');
     setIsEditing(false);
   };
 
@@ -65,17 +73,71 @@ const Profile = () => {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Email Address</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Email Address</label>
+                    {editEmail.trim().length > 0 && isValidEmailFormat(editEmail.trim()) && (
+                      <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 animate-fade-in">
+                        <CheckCircle2 size={11} className="text-emerald-500" />
+                        <span>✓ Valid email address</span>
+                      </span>
+                    )}
+                  </div>
                   <input 
                     type="email" 
                     value={editEmail} 
-                    onChange={(e) => setEditEmail(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-medium text-slate-800"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditEmail(val);
+                      if (val.trim().length === 0) {
+                        setEmailError('Please enter a valid email address.');
+                      } else if (isValidEmailFormat(val.trim())) {
+                        setEmailError('');
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!isValidEmailFormat(editEmail.trim())) {
+                        setEmailError('Please enter a valid email address.');
+                      } else {
+                        setEmailError('');
+                      }
+                    }}
+                    className={cn(
+                      "w-full px-3.5 py-2 border rounded-xl text-sm outline-none font-medium text-slate-800 transition-colors",
+                      emailError 
+                        ? "border-red-500 focus:ring-2 focus:ring-red-500" 
+                        : editEmail.trim().length > 0 && isValidEmailFormat(editEmail.trim())
+                          ? "border-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                          : "border-slate-200 focus:ring-2 focus:ring-blue-500"
+                    )}
                   />
+                  {emailError && (
+                    <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1 animate-fade-in">
+                      <span>❌ {emailError}</span>
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <Button size="sm" onClick={handleSave} className="rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800">Save Changes</Button>
-                  <Button size="sm" variant="outline" onClick={() => setIsEditing(false)} className="rounded-xl font-semibold">Cancel</Button>
+                  <Button 
+                    size="sm" 
+                    onClick={handleSave} 
+                    disabled={!isValidEmailFormat(editEmail.trim())}
+                    className="rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800"
+                  >
+                    Save Changes
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditEmail(currentUser?.email || '');
+                      setEditName(currentUser?.name || '');
+                      setEmailError('');
+                    }} 
+                    className="rounded-xl font-semibold"
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </div>
             ) : (
