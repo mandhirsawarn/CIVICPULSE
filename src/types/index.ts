@@ -89,6 +89,9 @@ export interface Issue {
   internalNotes?: InternalNote[];
   resolutionNote?: string;
   resolutionDate?: string;
+  resolvedAt?: string; // ISO string when issue was resolved
+  lastUpdatedAt?: string; // ISO string of latest modification
+  reopenedAt?: string; // ISO string when issue was reopened
   reopenedReason?: string;
   slaTarget?: string; // ISO String
   resolutionEvidence?: string[];

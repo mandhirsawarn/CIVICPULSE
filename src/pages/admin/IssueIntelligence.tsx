@@ -16,6 +16,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { PriorityBadge } from '../../components/ui/PriorityBadge';
 import { SectionHeader } from '../../components/ui/SectionHeader';
+import { formatExactDateTime, formatFullDate, formatTimeOnly } from '../../utils/dateFormat';
 
 export const ALL_STATUSES: { id: IssueStatus; label: string; color: string }[] = [
   { id: 'REPORTED', label: 'New / Reported', color: 'bg-slate-100 text-slate-700 border-slate-300' },
@@ -109,9 +110,13 @@ const IssueIntelligence = () => {
         if (!matchId && !matchTitle && !matchAddr && !matchEmail) return false;
       }
 
-      // Status
-      if (filterStatus !== 'ALL' && issue.status !== filterStatus) {
-        return false;
+      // Status Filter
+      if (filterStatus !== 'ALL') {
+        if (filterStatus === 'RESOLVED') {
+          if (issue.status !== 'RESOLVED' && issue.status !== 'CITIZEN_VERIFIED') return false;
+        } else if (issue.status !== filterStatus) {
+          return false;
+        }
       }
 
       // Category
@@ -162,16 +167,34 @@ const IssueIntelligence = () => {
     try {
       const updates: Partial<Issue> = {};
       const changes: string[] = [];
+      const nowIso = new Date().toISOString();
 
       if (editStatus && editStatus !== selectedIssue.status) {
-        // If moving to RESOLVED, open confirmation modal instead
-        if (editStatus === 'RESOLVED') {
-          setShowResolutionModal(true);
-          setIsSavingOps(false);
-          return;
-        }
         updates.status = editStatus;
-        changes.push(`Status changed to ${editStatus.replace('_', ' ')}`);
+        if (editStatus === 'RESOLVED') {
+          updates.resolvedAt = nowIso;
+          updates.resolutionDate = nowIso;
+          updates.resolutionNote = resolutionNoteInput.trim() || selectedIssue.resolutionNote || 'Issue inspected and marked resolved by municipal authority.';
+          if (resolutionPhotoInput.trim()) {
+            updates.resolutionEvidence = [resolutionPhotoInput.trim()];
+          }
+          changes.push(`Status changed to RESOLVED. ${updates.resolutionNote}`);
+        } else if (editStatus === 'REOPENED') {
+          updates.reopenedAt = nowIso;
+          changes.push(`Status changed to REOPENED`);
+        } else {
+          changes.push(`Status changed to ${editStatus.replace('_', ' ')}`);
+        }
+      } else if (editStatus === 'RESOLVED') {
+        // Status was already RESOLVED, but authority may have updated resolution note or photo
+        if (resolutionNoteInput.trim() && resolutionNoteInput.trim() !== selectedIssue.resolutionNote) {
+          updates.resolutionNote = resolutionNoteInput.trim();
+          changes.push(`Resolution note updated`);
+        }
+        if (resolutionPhotoInput.trim()) {
+          updates.resolutionEvidence = [resolutionPhotoInput.trim()];
+          changes.push(`Resolution photo updated`);
+        }
       }
 
       if (editPriority && editPriority !== (selectedIssue.authorityPriority || selectedIssue.priority)) {
@@ -205,7 +228,7 @@ const IssueIntelligence = () => {
         }
       }
 
-      if (changes.length > 0) {
+      if (changes.length > 0 || Object.keys(updates).length > 0) {
         await updateIssueOperationalFields(
           selectedIssue.id, 
           updates, 
@@ -494,7 +517,7 @@ const IssueIntelligence = () => {
                 <th className="px-4 py-3.5">Category</th>
                 <th className="px-4 py-3.5">Location</th>
                 <th className="px-4 py-3.5">Reported By</th>
-                <th className="px-4 py-3.5">Submitted</th>
+                <th className="px-4 py-3.5 whitespace-nowrap">Reported</th>
                 <th className="px-4 py-3.5">Priority</th>
                 <th className="px-4 py-3.5">Support</th>
                 <th className="px-4 py-3.5">Status</th>
@@ -548,6 +571,9 @@ const IssueIntelligence = () => {
                               {issue.voiceRecording && <Mic size={11} className="text-blue-600 shrink-0" />}
                               <span>{issue.description.slice(0, 45)}...</span>
                             </div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5 sm:hidden">
+                              Reported: {formatExactDateTime(issue.createdAt)}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -585,13 +611,11 @@ const IssueIntelligence = () => {
                         )}
                       </td>
 
-                      {/* Submitted */}
+                      {/* Reported */}
                       <td className="px-4 py-3.5 whitespace-nowrap">
-                        <div className="text-xs font-medium text-slate-700">
-                          {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          {new Date(issue.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                          <Clock size={12} className="text-slate-400 shrink-0" />
+                          <span>{formatExactDateTime(issue.createdAt)}</span>
                         </div>
                       </td>
 
@@ -682,6 +706,81 @@ const IssueIntelligence = () => {
             <div className="p-6 space-y-6 flex-1">
 
               {/* ----------------------------------------------------------------- */}
+              {/* SECTION: REPORT TIMELINE & IMMUTABLE SUBMISSION INFO */}
+              {/* ----------------------------------------------------------------- */}
+              <Card className="p-4 border border-slate-200/80 bg-white rounded-2xl shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Clock size={16} className="text-blue-600" />
+                    <h3 className="font-extrabold text-xs text-slate-900 uppercase tracking-wider">
+                      Report Timeline / Information
+                    </h3>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    ID: {selectedIssue.id}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {/* Reported */}
+                  <div className="bg-slate-50/90 p-3 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                      Reported
+                    </span>
+                    <div className="text-xs font-bold text-slate-900 leading-snug">
+                      {formatFullDate(selectedIssue.createdAt)}
+                    </div>
+                    <div className="text-[11px] font-mono font-medium text-slate-600 mt-0.5">
+                      {formatTimeOnly(selectedIssue.createdAt)}
+                    </div>
+                  </div>
+
+                  {/* Last Updated */}
+                  <div className="bg-slate-50/90 p-3 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                      Last Updated
+                    </span>
+                    <div className="text-xs font-bold text-slate-900 leading-snug">
+                      {formatFullDate(selectedIssue.lastUpdatedAt || selectedIssue.updatedAt || selectedIssue.createdAt)}
+                    </div>
+                    <div className="text-[11px] font-mono font-medium text-slate-600 mt-0.5">
+                      {formatTimeOnly(selectedIssue.lastUpdatedAt || selectedIssue.updatedAt || selectedIssue.createdAt)}
+                    </div>
+                  </div>
+
+                  {/* Resolved (Only shown if report is resolved) */}
+                  {(selectedIssue.status === 'RESOLVED' || selectedIssue.status === 'CITIZEN_VERIFIED') && (
+                    <div className="bg-emerald-50/90 p-3 rounded-xl border border-emerald-200/80">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block mb-1">
+                        ✓ Resolved
+                      </span>
+                      <div className="text-xs font-bold text-emerald-950 leading-snug">
+                        {formatFullDate(selectedIssue.resolvedAt || selectedIssue.resolutionDate || selectedIssue.updatedAt)}
+                      </div>
+                      <div className="text-[11px] font-mono font-medium text-emerald-700 mt-0.5">
+                        {formatTimeOnly(selectedIssue.resolvedAt || selectedIssue.resolutionDate || selectedIssue.updatedAt)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reopened (Only shown if report is reopened) */}
+                  {selectedIssue.status === 'REOPENED' && (
+                    <div className="bg-rose-50/90 p-3 rounded-xl border border-rose-200/80">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 block mb-1">
+                        ⚠️ Reopened
+                      </span>
+                      <div className="text-xs font-bold text-rose-950 leading-snug">
+                        {formatFullDate(selectedIssue.reopenedAt || selectedIssue.updatedAt)}
+                      </div>
+                      <div className="text-[11px] font-mono font-medium text-rose-700 mt-0.5">
+                        {formatTimeOnly(selectedIssue.reopenedAt || selectedIssue.updatedAt)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              {/* ----------------------------------------------------------------- */}
               {/* SECTION D: AUTHORITY OPERATIONAL CONTROLS PANEL */}
               {/* ----------------------------------------------------------------- */}
               <Card className="p-5 border-2 border-blue-600/30 bg-gradient-to-br from-blue-50/40 via-white to-slate-50/50 rounded-2xl shadow-xs space-y-4">
@@ -719,6 +818,31 @@ const IssueIntelligence = () => {
                       </button>
                     ))}
                   </div>
+
+                  {/* Inline Resolution Details if RESOLVED */}
+                  {editStatus === 'RESOLVED' && (
+                    <div className="mt-3 p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                          <CheckCircle2 size={13} className="text-emerald-700" /> Resolution Note & Ground Summary
+                        </label>
+                        <span className="text-[10px] text-emerald-700 font-medium">Visible to Citizen</span>
+                      </div>
+                      <textarea
+                        value={resolutionNoteInput}
+                        onChange={(e) => setResolutionNoteInput(e.target.value)}
+                        placeholder="e.g. Pothole asphalted and road leveled with thermoplastic markings applied..."
+                        className="w-full text-xs p-2.5 rounded-lg border border-emerald-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-600 min-h-[60px]"
+                      />
+                      <input
+                        type="url"
+                        value={resolutionPhotoInput}
+                        onChange={(e) => setResolutionPhotoInput(e.target.value)}
+                        placeholder="Optional resolution evidence photo URL..."
+                        className="w-full text-xs p-2 rounded-lg border border-emerald-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* 2. Authority Priority vs AI Recommended */}

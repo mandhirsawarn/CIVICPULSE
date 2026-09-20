@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { StatCard } from '../../components/ui/StatCard';
 import { PriorityBadge } from '../../components/ui/PriorityBadge';
 import { SectionHeader } from '../../components/ui/SectionHeader';
+import { formatExactDateTime, formatDateOnly } from '../../utils/dateFormat';
 
 const FILTERS = ['All', 'Active', 'Resolved'] as const;
 
@@ -150,9 +151,15 @@ const MyReports = () => {
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">{issue.category}</span>
-                        <Badge variant={getStatusVariant(issue.status)} className="text-[9.5px] px-1.5 py-0 uppercase font-bold">
-                          {issue.status.replace('_', ' ')}
-                        </Badge>
+                        {issue.status === 'RESOLVED' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 size={11} className="text-emerald-700" /> ✓ Resolved
+                          </span>
+                        ) : (
+                          <Badge variant={getStatusVariant(issue.status)} className="text-[9.5px] px-1.5 py-0 uppercase font-bold">
+                            {issue.status.replace('_', ' ')}
+                          </Badge>
+                        )}
                         {issue.isDuplicate && (
                           <span className="inline-flex items-center gap-1 text-[9.5px] font-bold bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0 rounded">
                             <AlertTriangle size={10} className="text-amber-600" /> Duplicate Report
@@ -164,8 +171,8 @@ const MyReports = () => {
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-slate-400 flex items-center gap-1 shrink-0">
-                        <Clock size={10} /> {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1 shrink-0" title={`Reported on ${formatExactDateTime(issue.createdAt)}`}>
+                        <Clock size={10} /> {formatExactDateTime(issue.createdAt)}
                       </span>
                     </div>
 
@@ -203,12 +210,31 @@ const MyReports = () => {
                         </div>
                       )}
 
+                      {/* RESOLVED DETAILS BOX */}
                       {issue.status === 'RESOLVED' && (
-                        <div className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300/80 px-2 py-0.5 rounded-md">
-                          <CheckCircle2 size={12} className="text-emerald-600" />
-                          Resolved by Authority • Click to verify on ground
+                        <div className="bg-emerald-50 border border-emerald-300/90 rounded-xl p-3 text-xs space-y-1 my-1.5 shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                              <CheckCircle2 size={13} className="text-emerald-700" />
+                              ✓ Resolved
+                            </span>
+                            {(issue.resolvedAt || issue.resolutionDate) && (
+                              <span className="text-[10.5px] font-semibold text-emerald-800">
+                                Resolved on: {formatDateOnly(issue.resolvedAt || issue.resolutionDate)}
+                              </span>
+                            )}
+                          </div>
+                          {issue.resolutionNote && (
+                            <div className="text-[11.5px] text-slate-700 font-normal">
+                              <span className="font-bold text-slate-900">Resolution:</span> "{issue.resolutionNote}"
+                            </div>
+                          )}
+                          <div className="text-[10.5px] font-semibold text-emerald-700 pt-0.5">
+                            Click to view ground proof & verify on site →
+                          </div>
                         </div>
                       )}
+
                       {issue.status === 'REOPENED' && (
                         <div className="inline-flex items-center gap-1 text-[10.5px] font-bold text-rose-800 bg-rose-50 border border-rose-300/80 px-2 py-0.5 rounded-md">
                           <AlertTriangle size={12} className="text-rose-600" />

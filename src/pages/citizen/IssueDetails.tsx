@@ -9,6 +9,7 @@ import { Badge } from '../../components/ui/Badge';
 import { PriorityBadge } from '../../components/ui/PriorityBadge';
 import { Timeline } from '../../components/ui/Timeline';
 import { getCategoryEmoji, getStatusVariant } from '../../components/ui/ReportCard';
+import { formatExactDateTime, formatFullDate } from '../../utils/dateFormat';
 
 const IssueDetails = () => {
   const { id } = useParams();
@@ -122,9 +123,15 @@ const IssueDetails = () => {
                 <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-2.5 py-1 rounded-lg">
                   {issue.id}
                 </span>
-                <Badge variant={getStatusVariant(issue.status)} className="text-[11px] font-bold uppercase tracking-wider">
-                  {issue.status.replace('_', ' ')}
-                </Badge>
+                {issue.status === 'RESOLVED' ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1 rounded-lg shadow-2xs">
+                    <CheckCircle2 size={13} className="text-emerald-700" /> ✓ RESOLVED
+                  </span>
+                ) : (
+                  <Badge variant={getStatusVariant(issue.status)} className="text-[11px] font-bold uppercase tracking-wider">
+                    {issue.status.replace('_', ' ')}
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <PriorityBadge priority={issue.priority || issue.citizenUrgency} score={issue.priorityScore} size="md" />
@@ -136,7 +143,7 @@ const IssueDetails = () => {
               <div>
                 <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 leading-tight">{issue.title}</h1>
                 <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-1.5 font-medium">
-                  <Clock size={13} className="text-slate-400" /> Reported on {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  <Clock size={13} className="text-slate-400" /> Reported on {formatExactDateTime(issue.createdAt)}
                 </p>
               </div>
             </div>
@@ -202,20 +209,22 @@ const IssueDetails = () => {
               </div>
 
               {/* Official Authority Resolution Note */}
-              {issue.resolutionNote && (
-                <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-3.5 mb-4 text-xs">
-                  <div className="flex items-center justify-between mb-1">
+              {(issue.resolutionNote || isResolved) && (
+                <div className="bg-emerald-50/90 border border-emerald-300/80 rounded-xl p-3.5 mb-4 text-xs space-y-1">
+                  <div className="flex items-center justify-between">
                     <span className="font-bold text-emerald-900 flex items-center gap-1.5">
                       <CheckCircle2 size={14} className="text-emerald-700" />
                       Official Resolution Summary
                     </span>
-                    {issue.resolutionDate && (
-                      <span className="text-[10.5px] text-emerald-700 font-mono">
-                        {new Date(issue.resolutionDate).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {(issue.resolvedAt || issue.resolutionDate) && (
+                      <span className="text-[11px] text-emerald-800 font-semibold font-mono">
+                        Resolved on: {formatExactDateTime(issue.resolvedAt || issue.resolutionDate)}
                       </span>
                     )}
                   </div>
-                  <p className="text-slate-700 leading-relaxed font-normal">{issue.resolutionNote}</p>
+                  <p className="text-slate-800 leading-relaxed font-normal">
+                    {issue.resolutionNote || 'The municipal authority inspected and resolved this issue on ground.'}
+                  </p>
                 </div>
               )}
 

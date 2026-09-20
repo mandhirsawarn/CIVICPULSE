@@ -2,6 +2,7 @@ import React from 'react';
 import { TimelineEvent } from '../../types';
 import { cn } from './Button';
 import { CheckCircle2, Circle, Clock } from 'lucide-react';
+import { formatExactDateTime } from '../../utils/dateFormat';
 
 interface TimelineProps {
   events: TimelineEvent[];
@@ -12,18 +13,23 @@ interface TimelineProps {
 export function Timeline({ events, className, horizontal = false }: TimelineProps) {
   const getTimelineLabel = (status: string) => {
     switch (status) {
-      case 'REPORTED': return 'REPORT SUBMITTED';
-      case 'AI_VERIFIED': return 'AI ANALYSIS COMPLETED';
-      case 'ASSIGNED': return 'ROUTED TO DEPARTMENT';
-      case 'ACKNOWLEDGED': return 'DEPARTMENT ACKNOWLEDGED';
-      case 'INSPECTION': return 'FIELD INSPECTION';
-      case 'IN_PROGRESS': return 'WORK IN PROGRESS';
-      case 'RESOLVED': return 'RESOLUTION SUBMITTED';
-      case 'CITIZEN_VERIFIED': return 'RESOLVED';
-      default: return status.replace('_', ' ').toUpperCase();
+      case 'REPORTED': return 'Report Submitted';
+      case 'UNDER_REVIEW': return 'Under Review';
+      case 'AI_VERIFIED': return 'Verified';
+      case 'ASSIGNED': return 'Assigned';
+      case 'ACKNOWLEDGED': return 'Department Acknowledged';
+      case 'INSPECTION': return 'Field Inspection';
+      case 'IN_PROGRESS': return 'In Progress';
+      case 'ON_HOLD': return 'On Hold';
+      case 'RESOLVED': return 'Resolved';
+      case 'CITIZEN_VERIFIED': return 'Citizen Verified';
+      case 'REOPENED': return 'Reopened';
+      case 'REJECTED': return 'Rejected';
+      default: return status.replace('_', ' ');
     }
   };
-  // Sort events chronologically just in case
+
+  // Sort events chronologically
   const sortedEvents = [...events].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
@@ -43,9 +49,11 @@ export function Timeline({ events, className, horizontal = false }: TimelineProp
                 <CheckCircle2 className="h-4 w-4 text-civic-secondary" />
               </div>
               <div className="mt-3 flex flex-col items-center text-center">
-                <span className="text-[10px] font-bold text-civic-text tracking-wider uppercase">{getTimelineLabel(event.status)}</span>
-                <span className="mt-1 text-xs text-civic-muted">
-                  {new Date(event.timestamp).toLocaleDateString()}
+                <span className="text-[10.5px] font-bold text-slate-800 tracking-wider uppercase">
+                  ✓ {getTimelineLabel(event.status)}
+                </span>
+                <span className="mt-1 text-xs text-slate-500 font-mono">
+                  {formatExactDateTime(event.timestamp)}
                 </span>
               </div>
             </div>
@@ -57,17 +65,25 @@ export function Timeline({ events, className, horizontal = false }: TimelineProp
 
   // Vertical timeline
   return (
-    <div className={cn("relative border-l border-brand-200 ml-3", className)}>
-      {sortedEvents.map((event, index) => (
-        <div key={event.id} className="mb-6 ml-6 last:mb-0">
-          <span className="absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 ring-4 ring-white">
-            <CheckCircle2 className="h-4 w-4 text-civic-secondary" />
+    <div className={cn("relative border-l-2 border-blue-100 ml-3.5 space-y-6 py-2", className)}>
+      {sortedEvents.map((event) => (
+        <div key={event.id} className="relative pl-6">
+          <span className="absolute -left-[9px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 ring-4 ring-white">
+            <CheckCircle2 className="h-3.5 w-3.5 text-white" />
           </span>
-          <h3 className="mb-1 text-xs font-bold text-civic-text tracking-wider uppercase">{getTimelineLabel(event.status)}</h3>
-          <time className="mb-2 block text-[10px] font-medium leading-none text-civic-muted">
-            {new Date(event.timestamp).toLocaleString()} - {event.actor}
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              ✓ {getTimelineLabel(event.status)}
+            </h4>
+          </div>
+          <time className="block text-[11px] font-semibold text-slate-500 mt-0.5 font-mono">
+            {formatExactDateTime(event.timestamp)} • {event.actor}
           </time>
-          <p className="text-sm text-civic-muted">{event.description}</p>
+          {event.description && (
+            <p className="text-xs text-slate-600 mt-1 leading-relaxed bg-slate-50/70 p-2 rounded-lg border border-slate-100">
+              {event.description}
+            </p>
+          )}
         </div>
       ))}
     </div>

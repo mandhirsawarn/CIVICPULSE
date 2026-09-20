@@ -15,6 +15,8 @@ interface ReportCardProps {
   className?: string;
 }
 
+import { formatExactDateTime, formatDateOnly } from '../../utils/dateFormat';
+
 export const getCategoryEmoji = (category: string) => {
   switch (category) {
     case 'Pothole':
@@ -35,10 +37,15 @@ export const getCategoryEmoji = (category: string) => {
 export const getStatusVariant = (status: string) => {
   switch (status) {
     case 'REPORTED': return 'outline';
+    case 'UNDER_REVIEW': return 'info';
     case 'AI_VERIFIED': return 'info';
     case 'ASSIGNED': return 'info';
     case 'IN_PROGRESS': return 'warning';
+    case 'ON_HOLD': return 'warning';
     case 'RESOLVED': return 'success';
+    case 'REOPENED': return 'danger';
+    case 'REJECTED': return 'danger';
+    case 'DUPLICATE': return 'outline';
     case 'CITIZEN_VERIFIED': return 'success';
     default: return 'default';
   }
@@ -103,9 +110,15 @@ export const ReportCard: React.FC<ReportCardProps> = ({
             </div>
           )}
           <div className="absolute top-3 right-3 z-10">
-            <Badge variant={getStatusVariant(issue.status)} className="shadow-xs bg-white/95 backdrop-blur-xs font-bold text-[10px] uppercase tracking-wider">
-              {issue.status.replace('_', ' ')}
-            </Badge>
+            {issue.status === 'RESOLVED' ? (
+              <span className="shadow-xs bg-emerald-600 text-white font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                ✓ Resolved
+              </span>
+            ) : (
+              <Badge variant={getStatusVariant(issue.status)} className="shadow-xs bg-white/95 backdrop-blur-xs font-bold text-[10px] uppercase tracking-wider">
+                {issue.status.replace('_', ' ')}
+              </Badge>
+            )}
           </div>
         </div>
       )}
@@ -125,9 +138,15 @@ export const ReportCard: React.FC<ReportCardProps> = ({
                   {issue.category}
                 </span>
                 {!showImage && (
-                  <Badge variant={getStatusVariant(issue.status)} className="text-[10px] font-bold uppercase tracking-wider">
-                    {issue.status.replace('_', ' ')}
-                  </Badge>
+                  issue.status === 'RESOLVED' ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                      ✓ Resolved
+                    </span>
+                  ) : (
+                    <Badge variant={getStatusVariant(issue.status)} className="text-[10px] font-bold uppercase tracking-wider">
+                      {issue.status.replace('_', ' ')}
+                    </Badge>
+                  )
                 )}
                 {issue.isDuplicate && (
                   <span className="inline-flex items-center gap-1 text-[9.5px] font-bold bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0 rounded">
@@ -158,14 +177,33 @@ export const ReportCard: React.FC<ReportCardProps> = ({
           </span>
           <span>•</span>
           <span className="flex items-center gap-1 shrink-0">
-            <Clock size={11} /> {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+            <Clock size={11} /> {formatDateOnly(issue.createdAt)}
           </span>
         </div>
 
         {/* Description Snippet */}
-        <p className="text-xs sm:text-sm text-slate-600 line-clamp-2 mb-4 leading-relaxed flex-1 font-normal">
+        <p className="text-xs sm:text-sm text-slate-600 line-clamp-2 mb-3 leading-relaxed flex-1 font-normal">
           {issue.description || "No description provided."}
         </p>
+
+        {/* Resolution callout */}
+        {issue.status === 'RESOLVED' && (
+          <div className="mb-3.5 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950">
+            <div className="flex items-center justify-between font-bold text-[11px] text-emerald-800 mb-0.5">
+              <span>✓ Resolved</span>
+              {(issue.resolvedAt || issue.resolutionDate) && (
+                <span className="text-[10px] font-medium text-emerald-700">
+                  {formatDateOnly(issue.resolvedAt || issue.resolutionDate)}
+                </span>
+              )}
+            </div>
+            {issue.resolutionNote && (
+              <p className="text-[11px] text-slate-600 line-clamp-1">
+                Resolution: "{issue.resolutionNote}"
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Community Support Progress Indicator */}
         {totalVotes > 0 && (

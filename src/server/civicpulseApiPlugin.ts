@@ -215,11 +215,21 @@ export function civicpulseApiPlugin(): Plugin {
             }
 
             const existing = current[index];
+            const nowIso = new Date().toISOString();
             const updatedIssue: any = {
               ...existing,
               ...updates,
-              updatedAt: new Date().toISOString()
+              createdAt: existing.createdAt, // ALWAYS PRESERVE ORIGINAL CREATED AT
+              lastUpdatedAt: nowIso,
+              updatedAt: nowIso
             };
+
+            if (updates.status === 'RESOLVED') {
+              updatedIssue.resolvedAt = updates.resolvedAt || existing.resolvedAt || nowIso;
+              if (!updatedIssue.resolutionDate) updatedIssue.resolutionDate = updatedIssue.resolvedAt;
+            } else if (updates.status === 'REOPENED') {
+              updatedIssue.reopenedAt = updates.reopenedAt || existing.reopenedAt || nowIso;
+            }
 
             current[index] = updatedIssue;
             saveDatabase(current);

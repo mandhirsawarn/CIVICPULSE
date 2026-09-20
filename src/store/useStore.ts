@@ -161,22 +161,25 @@ export const useStore = create<StoreState>()(
           if (data && Array.isArray(data.issues) && data.issues.length > 0) {
             const serverIssues: Issue[] = data.issues;
             
-            // Merge: preserve any local issues that haven't synced yet, taking newer versions
+            // Server is single source of truth for all persisted issues
             const currentIssues = get().issues;
             const issueMap = new Map<string, Issue>();
             
-            // Add server issues first
+            // 1. Add all server issues first
             for (const issue of serverIssues) {
               issueMap.set(issue.id, issue);
             }
             
-            // If local issue has newer updatedAt or not on server, keep it
+            // 2. If a local issue was created offline and not yet on server, keep it and push it
             for (const local of currentIssues) {
-              const remote = issueMap.get(local.id);
-              if (!remote) {
+              if (!issueMap.has(local.id)) {
                 issueMap.set(local.id, local);
-              } else if (new Date(local.updatedAt).getTime() > new Date(remote.updatedAt).getTime()) {
-                issueMap.set(local.id, local);
+                // Background sync to server
+                fetch('/api/issues', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(local)
+                }).catch(() => {});
               }
             }
 
@@ -271,14 +274,24 @@ export const useStore = create<StoreState>()(
       // Update issue status with optional evidence & note
       updateIssueStatus: async (id, status, evidence, note) => {
         let updatedIssue: Issue | null = null;
+        const nowIso = new Date().toISOString();
+
         set((state) => ({
           issues: state.issues.map(issue => {
             if (issue.id === id) {
-              const updated = { 
+              const updated: Issue = { 
                 ...issue, 
                 status, 
-                updatedAt: new Date().toISOString() 
+                createdAt: issue.createdAt, // ALWAYS PRESERVED
+                lastUpdatedAt: nowIso,
+                updatedAt: nowIso 
               };
+              if (status === 'RESOLVED') {
+                updated.resolvedAt = issue.resolvedAt || nowIso;
+                if (!updated.resolutionDate) updated.resolutionDate = updated.resolvedAt;
+              } else if (status === 'REOPENED') {
+                updated.reopenedAt = issue.reopenedAt || nowIso;
+              }
               if (evidence) updated.resolutionEvidence = evidence;
               if (note) updated.resolutionNote = note;
               updated.timeline = [
@@ -286,7 +299,7 @@ export const useStore = create<StoreState>()(
                 {
                   id: `tl-${Date.now()}`,
                   status,
-                  timestamp: new Date().toISOString(),
+                  timestamp: nowIso,
                   description: note ? `Status changed to ${status.replace('_', ' ')}: ${note}` : `Status updated to ${status.replace('_', ' ')}`,
                   actor: 'Authority'
                 }
@@ -311,7 +324,16 @@ export const useStore = create<StoreState>()(
           fetch(`/api/issues/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status, resolutionEvidence: evidence, resolutionNote: note, timeline: u.timeline })
+            body: JSON.stringify({ 
+              status, 
+              resolutionEvidence: evidence, 
+              resolutionNote: note, 
+              createdAt: u.createdAt,
+              resolvedAt: u.resolvedAt,
+              lastUpdatedAt: u.lastUpdatedAt,
+              reopenedAt: u.reopenedAt,
+              timeline: u.timeline 
+            })
           }).catch(() => {});
 
           syncChannel?.postMessage({ type: 'ISSUE_UPDATED', issue: u });
@@ -321,6 +343,8 @@ export const useStore = create<StoreState>()(
       // Full Authority Operational Update (Status, Priority, Dept, Team, Officer, ETA, Notes)
       updateIssueOperationalFields: async (id, fields, auditDescription) => {
         let updatedIssue: Issue | null = null;
+        const nowIso = new Date().toISOString();
+
         set((state) => ({
           issues: state.issues.map(issue => {
             if (issue.id === id) {
@@ -329,7 +353,7 @@ export const useStore = create<StoreState>()(
                 newTimeline.push({
                   id: `tl-${Date.now()}`,
                   status: fields.status || issue.status,
-                  timestamp: new Date().toISOString(),
+                  timestamp: nowIso,
                   description: auditDescription,
                   actor: 'Authority'
                 });
@@ -338,9 +362,19 @@ export const useStore = create<StoreState>()(
               const updated: Issue = {
                 ...issue,
                 ...fields,
-                timeline: newTimeline,
-                updatedAt: new Date().toISOString()
+                createdAt: issue.createdAt, // ALWAYS PRESERVE ORIGINAL CREATED AT
+                lastUpdatedAt: nowIso,
+                updatedAt: nowIso,
+                timeline: newTimeline
               };
+
+              if (fields.status === 'RESOLVED') {
+                updated.resolvedAt = fields.resolvedAt || issue.resolvedAt || nowIso;
+                if (!updated.resolutionDate) updated.resolutionDate = updated.resolvedAt;
+              } else if (fields.status === 'REOPENED') {
+                updated.reopenedAt = fields.reopenedAt || issue.reopenedAt || nowIso;
+              }
+
               updatedIssue = updated;
               return updated;
             }
@@ -364,11 +398,22 @@ export const useStore = create<StoreState>()(
           }
 
           // Push to shared server
-          fetch(`/api/issues/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...fields, timeline: u.timeline })
-          }).catch(() => {});
+          try {
+            await fetch(`/api/issues/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                ...fields, 
+                createdAt: u.createdAt,
+                resolvedAt: u.resolvedAt,
+                lastUpdatedAt: u.lastUpdatedAt,
+                reopenedAt: u.reopenedAt,
+                timeline: u.timeline 
+              })
+            });
+          } catch (err) {
+            console.error('[CivicPulse Sync] PATCH failed:', err);
+          }
 
           syncChannel?.postMessage({ type: 'ISSUE_UPDATED', issue: u });
         }
@@ -463,11 +508,14 @@ export const useStore = create<StoreState>()(
         const issue = get().issues.find(i => i.id === issueId);
         if (!issue) return;
 
+        const nowIso = new Date().toISOString();
         await get().updateIssueOperationalFields(
           issueId,
           {
             status: 'REOPENED',
-            reopenedReason: reason
+            reopenedReason: reason,
+            reopenedAt: nowIso,
+            lastUpdatedAt: nowIso
           },
           `Issue REOPENED. Citizen feedback: "${reason}"`
         );

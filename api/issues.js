@@ -72,7 +72,22 @@ export default async function handler(req, res) {
     if (idx === -1) {
       return res.status(404).json({ success: false, error: 'Issue not found' });
     }
-    issues[idx] = { ...issues[idx], ...updates, updatedAt: new Date().toISOString() };
+    const existing = issues[idx];
+    const nowIso = new Date().toISOString();
+    const updatedIssue = {
+      ...existing,
+      ...updates,
+      createdAt: existing.createdAt,
+      lastUpdatedAt: nowIso,
+      updatedAt: nowIso
+    };
+    if (updates.status === 'RESOLVED') {
+      updatedIssue.resolvedAt = updates.resolvedAt || existing.resolvedAt || nowIso;
+      if (!updatedIssue.resolutionDate) updatedIssue.resolutionDate = updatedIssue.resolvedAt;
+    } else if (updates.status === 'REOPENED') {
+      updatedIssue.reopenedAt = updates.reopenedAt || existing.reopenedAt || nowIso;
+    }
+    issues[idx] = updatedIssue;
     saveIssues(issues);
     return res.status(200).json({ success: true, issue: issues[idx] });
   }
