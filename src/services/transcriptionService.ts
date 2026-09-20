@@ -116,11 +116,72 @@ export function detectLanguageFromText(text: string): string {
 }
 
 /**
+ * Normalizes cumulative interim/final repetition artifacts produced by mobile speech engines
+ * without removing legitimate user repetition (e.g. "very very important").
+ */
+export function cleanCumulativeSpeechRepetition(text: string): string {
+  if (!text || !text.trim()) return '';
+
+  let words = text.trim().split(/\s+/);
+  let changed = true;
+
+  while (changed && words.length >= 4) {
+    changed = false;
+
+    // Check for cumulative prefix repetitions from the start (k >= 2 words)
+    for (let k = Math.floor(words.length / 2); k >= 2; k--) {
+      let match = true;
+      for (let j = 0; j < k; j++) {
+        const w1 = words[j].toLowerCase().replace(/[.,!?;:]/g, '');
+        const w2 = words[k + j].toLowerCase().replace(/[.,!?;:]/g, '');
+        if (w1 !== w2) {
+          match = false;
+          break;
+        }
+      }
+
+      if (match) {
+        words = words.slice(k);
+        changed = true;
+        break;
+      }
+    }
+
+    if (!changed) {
+      // Check mid-sentence cumulative repetitions (k >= 2 words)
+      for (let start = 1; start <= words.length - 4; start++) {
+        const remaining = words.length - start;
+        for (let k = Math.floor(remaining / 2); k >= 2; k--) {
+          let match = true;
+          for (let j = 0; j < k; j++) {
+            const w1 = words[start + j].toLowerCase().replace(/[.,!?;:]/g, '');
+            const w2 = words[start + k + j].toLowerCase().replace(/[.,!?;:]/g, '');
+            if (w1 !== w2) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            words.splice(start, k);
+            changed = true;
+            break;
+          }
+        }
+        if (changed) break;
+      }
+    }
+  }
+
+  return words.join(' ');
+}
+
+/**
  * Formats transcript with proper sentence capitalization and terminal punctuation.
  */
 export function formatTranscript(text: string): string {
   if (!text) return '';
-  let trimmed = text.trim();
+  const cleaned = cleanCumulativeSpeechRepetition(text);
+  let trimmed = cleaned.trim();
   if (!trimmed) return '';
   
   // Capitalize first character if Latin
@@ -197,23 +258,35 @@ export function startNativeSpeechRecognition(
       const segment = rawSegment.trim();
       if (!segment) continue;
 
+      console.log(`[VOICE RESULT] resultIndex: ${event.resultIndex} isFinal: ${res.isFinal} text: "${segment}"`);
+
       if (res.isFinal) {
         // Guarantee previously finalized indices in event.results are never re-added
         if (i > lastProcessedFinalIndex) {
           if (segment !== lastFinalSegment) {
-            persistentFinalTranscript = persistentFinalTranscript
-              ? `${persistentFinalTranscript} ${segment}`
-              : segment;
+            // If segment is a cumulative expansion of persistentFinalTranscript, replace it
+            if (persistentFinalTranscript && segment.toLowerCase().startsWith(persistentFinalTranscript.toLowerCase())) {
+              persistentFinalTranscript = segment;
+            } else if (persistentFinalTranscript && persistentFinalTranscript.toLowerCase().endsWith(segment.toLowerCase())) {
+              // Already contained
+            } else {
+              persistentFinalTranscript = persistentFinalTranscript
+                ? `${persistentFinalTranscript} ${segment}`
+                : segment;
+            }
             lastFinalSegment = segment;
           }
           lastProcessedFinalIndex = i;
         }
       } else {
-        interimTranscript = interimTranscript ? `${interimTranscript} ${segment}` : segment;
+        // Interim text strictly REPLACES previous interim text within this unfinalized segment
+        interimTranscript = segment;
       }
     }
 
     lastInterim = interimTranscript;
+
+    console.log(`[VOICE RESULT] finalTranscript: "${persistentFinalTranscript}" interimTranscript: "${interimTranscript}"`);
 
     // Live preview during recording: permanent finalized text + current interim phrase
     const livePreview = interimTranscript
