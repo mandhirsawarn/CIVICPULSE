@@ -180,6 +180,7 @@ export function startNativeSpeechRecognition(
 
   let persistentFinalTranscript = '';
   let lastFinalSegment = '';
+  let lastProcessedFinalIndex = -1;
   let lastInterim = '';
   let userStopped = false;
 
@@ -197,12 +198,15 @@ export function startNativeSpeechRecognition(
       if (!segment) continue;
 
       if (res.isFinal) {
-        // Prevent duplicate consecutive final segments emitted by mobile speech recognition bug
-        if (segment !== lastFinalSegment) {
-          persistentFinalTranscript = persistentFinalTranscript
-            ? `${persistentFinalTranscript} ${segment}`
-            : segment;
-          lastFinalSegment = segment;
+        // Guarantee previously finalized indices in event.results are never re-added
+        if (i > lastProcessedFinalIndex) {
+          if (segment !== lastFinalSegment) {
+            persistentFinalTranscript = persistentFinalTranscript
+              ? `${persistentFinalTranscript} ${segment}`
+              : segment;
+            lastFinalSegment = segment;
+          }
+          lastProcessedFinalIndex = i;
         }
       } else {
         interimTranscript = interimTranscript ? `${interimTranscript} ${segment}` : segment;
