@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, MapPin, Clock, ArrowRight, Inbox, AlertTriangle, Layers } from 'lucide-react';
+import { Search, MapPin, Clock, ArrowRight, Inbox, AlertTriangle, Layers, Building2, UserCheck, CheckCircle2 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { cn } from '../../utils/cn';
 import { Badge } from '../../components/ui/Badge';
@@ -25,10 +25,15 @@ const itemVariants = {
 const getStatusVariant = (status: string) => {
   switch (status) {
     case 'REPORTED': return 'outline';
+    case 'UNDER_REVIEW': return 'info';
     case 'AI_VERIFIED': return 'info';
     case 'ASSIGNED': return 'info';
     case 'IN_PROGRESS': return 'warning';
+    case 'ON_HOLD': return 'warning';
     case 'RESOLVED': return 'success';
+    case 'REOPENED': return 'danger';
+    case 'REJECTED': return 'danger';
+    case 'DUPLICATE': return 'outline';
     case 'CITIZEN_VERIFIED': return 'success';
     default: return 'default';
   }
@@ -39,14 +44,15 @@ const MyReports = () => {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const userIssues = issues.filter((i) => i.reporterId === currentUser?.id);
+  const effectiveUserId = currentUser?.id || 'user-1';
+  const userIssues = issues.filter((i) => i.reporterId === effectiveUserId || (!i.reporterId && effectiveUserId === 'user-1'));
   
-  const activeCount = userIssues.filter(i => i.status !== 'RESOLVED' && i.status !== 'CITIZEN_VERIFIED').length;
+  const activeCount = userIssues.filter(i => i.status !== 'RESOLVED' && i.status !== 'CITIZEN_VERIFIED' && i.status !== 'REJECTED').length;
   const resolvedCount = userIssues.filter(i => i.status === 'RESOLVED' || i.status === 'CITIZEN_VERIFIED').length;
 
   const filtered = userIssues.filter((i) => {
     // Filter
-    if (filter === 'Active' && (i.status === 'RESOLVED' || i.status === 'CITIZEN_VERIFIED')) return false;
+    if (filter === 'Active' && (i.status === 'RESOLVED' || i.status === 'CITIZEN_VERIFIED' || i.status === 'REJECTED')) return false;
     if (filter === 'Resolved' && (i.status !== 'RESOLVED' && i.status !== 'CITIZEN_VERIFIED')) return false;
     
     // Search
@@ -174,18 +180,50 @@ const MyReports = () => {
                       {issue.title}
                     </h4>
                     
-                    <div className="flex items-center gap-1 text-xs text-slate-500 mb-2.5">
-                      <MapPin size={11} className="text-blue-600 shrink-0" />
-                      <span className="truncate">{issue.location.address}</span>
+                    <div className="space-y-1.5 mb-2.5">
+                      <div className="flex items-center gap-1 text-xs text-slate-500">
+                        <MapPin size={11} className="text-blue-600 shrink-0" />
+                        <span className="truncate">{issue.location.address}</span>
+                      </div>
+                      
+                      {(issue.assignedOfficer || issue.assignedDepartmentId) && (
+                        <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                          {issue.assignedDepartmentId && (
+                            <span className="inline-flex items-center gap-1 font-semibold text-slate-700 truncate">
+                              <Building2 size={11} className="text-blue-600 shrink-0" />
+                              {issue.assignedDepartmentId}
+                            </span>
+                          )}
+                          {issue.assignedOfficer && (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.2 rounded font-medium truncate">
+                              <UserCheck size={11} className="text-emerald-600 shrink-0" />
+                              {issue.assignedOfficer}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {issue.status === 'RESOLVED' && (
+                        <div className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300/80 px-2 py-0.5 rounded-md">
+                          <CheckCircle2 size={12} className="text-emerald-600" />
+                          Resolved by Authority • Click to verify on ground
+                        </div>
+                      )}
+                      {issue.status === 'REOPENED' && (
+                        <div className="inline-flex items-center gap-1 text-[10.5px] font-bold text-rose-800 bg-rose-50 border border-rose-300/80 px-2 py-0.5 rounded-md">
+                          <AlertTriangle size={12} className="text-rose-600" />
+                          Reopened for Re-inspection
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-[11px]">
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-400 font-medium">Priority:</span>
-                        <PriorityBadge priority={issue.priority || issue.citizenUrgency} score={issue.priorityScore} size="sm" />
+                        <PriorityBadge priority={issue.authorityPriority || issue.priority || issue.citizenUrgency} score={issue.priorityScore} size="sm" />
                       </div>
                       <div className="flex items-center gap-1">
-                        <span className="text-slate-400">SLA:</span>
+                        <span className="text-slate-400">ETA:</span>
                         <span className="font-bold text-slate-700">{issue.estimatedResolutionTime || '2-5 days'}</span>
                       </div>
                     </div>

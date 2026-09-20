@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { AlertTriangle, Clock, CheckCircle2, TrendingUp, Activity, Users, ShieldAlert, ArrowRight, BrainCircuit, BarChart3, Database } from 'lucide-react';
+import { AlertTriangle, Clock, CheckCircle2, TrendingUp, Activity, Users, ShieldAlert, ArrowRight, BrainCircuit, BarChart3, Database, Layers } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Card } from '../../components/ui/Card';
 import { StatCard } from '../../components/ui/StatCard';
@@ -33,9 +33,16 @@ const Counter = ({ end, suffix = '' }: { end: number, suffix?: string }) => {
 const AdminOverview = () => {
   const { issues } = useStore();
   
-  const activeIssues = issues.filter(i => i.status !== 'RESOLVED' && i.status !== 'CITIZEN_VERIFIED');
-  const criticalIssues = activeIssues.filter(i => i.aiAnalysis?.severity === 'CRITICAL' || i.aiAnalysis?.severity === 'HIGH');
-  const inProgress = activeIssues.filter(i => i.status === 'IN_PROGRESS');
+  const totalReports = issues.length;
+  const newReports = issues.filter(i => i.status === 'REPORTED').length;
+  const pendingReview = issues.filter(i => i.status === 'UNDER_REVIEW' || i.status === 'AI_VERIFIED').length;
+  const assigned = issues.filter(i => i.status === 'ASSIGNED').length;
+  const inProgress = issues.filter(i => i.status === 'IN_PROGRESS').length;
+  const resolved = issues.filter(i => i.status === 'RESOLVED' || i.status === 'CITIZEN_VERIFIED').length;
+  const reopened = issues.filter(i => i.status === 'REOPENED').length;
+  const duplicates = issues.filter(i => i.isDuplicate || i.status === 'DUPLICATE').length;
+  const criticalIssues = issues.filter(i => (i.authorityPriority || i.priority) === 'CRITICAL' || (i.authorityPriority || i.priority) === 'HIGH');
+  const slaBreached = issues.filter(i => i.slaTarget && new Date(i.slaTarget).getTime() < Date.now() && i.status !== 'RESOLVED' && i.status !== 'CITIZEN_VERIFIED').length;
   
   const [feed] = useState([
     { id: 1, type: 'CRITICAL', text: 'Critical waterlogging detected at Connaught Place', time: '2 mins ago', icon: ShieldAlert, variant: 'danger' },
@@ -49,8 +56,8 @@ const AdminOverview = () => {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Badge variant="outline" className="text-[10px] font-bold text-amber-700 bg-amber-50 border-amber-200">
-              Prototype / Demo Environment • Simulated Data
+            <Badge variant="outline" className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border-emerald-300">
+              ● Live Municipal Command Center • Bi-Directional Citizen Sync
             </Badge>
           </div>
           <SectionHeader 
@@ -71,13 +78,49 @@ const AdminOverview = () => {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <StatCard title="Active Issues" value={activeIssues.length} icon={Activity} trend="+12% weekly" trendUp={false} />
-        <StatCard title="Critical Priority" value={criticalIssues.length} icon={AlertTriangle} trend="-2% vs avg" trendUp={true} valueColor="text-red-600" />
-        <StatCard title="In Progress" value={inProgress.length} icon={Users} trend="+5% resolved" trendUp={true} valueColor="text-blue-600" />
-        <StatCard title="SLA At Risk" value={1} icon={Clock} trend="1 expiring" trendUp={false} valueColor="text-amber-600" />
-        <StatCard title="Avg Resolution" value={<Counter end={8.4} suffix="h" />} icon={TrendingUp} trend="-0.5h SLA target" trendUp={true} valueColor="text-emerald-600" />
+      {/* Primary KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StatCard title="Total Reports" value={totalReports} icon={Activity} />
+        <StatCard title="New Reports" value={newReports} icon={Activity} valueColor="text-blue-700" />
+        <StatCard title="Under Review" value={pendingReview} icon={Clock} valueColor="text-indigo-700" />
+        <StatCard title="In Progress" value={inProgress} icon={Users} valueColor="text-amber-700" />
+        <StatCard title="Resolved" value={resolved} icon={CheckCircle2} valueColor="text-emerald-700" />
+        <StatCard title="Reopened" value={reopened} icon={AlertTriangle} valueColor={reopened > 0 ? "text-rose-700" : "text-slate-700"} />
+      </div>
+
+      {/* Secondary Operational Signals */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white border border-slate-200/80 p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Critical Priority</div>
+            <div className="text-lg font-black text-red-700 mt-0.5">{criticalIssues.length}</div>
+          </div>
+          <AlertTriangle size={20} className="text-red-500" />
+        </div>
+
+        <div className="bg-white border border-slate-200/80 p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned to Teams</div>
+            <div className="text-lg font-black text-purple-700 mt-0.5">{assigned}</div>
+          </div>
+          <Users size={20} className="text-purple-500" />
+        </div>
+
+        <div className="bg-white border border-slate-200/80 p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Duplicate Clusters</div>
+            <div className="text-lg font-black text-amber-700 mt-0.5">{duplicates}</div>
+          </div>
+          <Layers size={20} className="text-amber-500" />
+        </div>
+
+        <div className="bg-white border border-slate-200/80 p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SLA Breached</div>
+            <div className={cn("text-lg font-black mt-0.5", slaBreached > 0 ? "text-red-700" : "text-emerald-700")}>{slaBreached}</div>
+          </div>
+          <Clock size={20} className={slaBreached > 0 ? "text-red-500" : "text-emerald-500"} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

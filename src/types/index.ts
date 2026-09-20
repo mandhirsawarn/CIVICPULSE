@@ -9,13 +9,31 @@ export interface User {
   civicPoints?: number;
 }
 
-export type IssueStatus = 'REPORTED' | 'AI_VERIFIED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CITIZEN_VERIFIED';
+export type IssueStatus = 
+  | 'REPORTED' 
+  | 'UNDER_REVIEW' 
+  | 'AI_VERIFIED' 
+  | 'ASSIGNED' 
+  | 'IN_PROGRESS' 
+  | 'ON_HOLD' 
+  | 'RESOLVED' 
+  | 'REOPENED' 
+  | 'REJECTED' 
+  | 'DUPLICATE' 
+  | 'CITIZEN_VERIFIED';
 
 export type IssueCategory = 'Pothole' | 'Garbage' | 'Streetlight' | 'Waterlogging' | 'Broken Footpath' | 'Traffic Sign' | 'Public Safety' | 'Road Damage' | 'Drainage' | 'Obstruction' | 'Illegal Dumping' | 'Water Leakage' | 'Other';
 
 export type Severity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export type Urgency = 'URGENT' | 'HIGH' | 'MODERATE' | 'LOW';
+
+export interface InternalNote {
+  id: string;
+  text: string;
+  author: string;
+  timestamp: string;
+}
 
 export interface AIAnalysis {
   confidence: number;
@@ -66,6 +84,12 @@ export interface Issue {
   aiAnalysis?: AIAnalysis;
   assignedDepartmentId?: string;
   assignedTeamId?: string;
+  assignedOfficer?: string;
+  authorityPriority?: Severity;
+  internalNotes?: InternalNote[];
+  resolutionNote?: string;
+  resolutionDate?: string;
+  reopenedReason?: string;
   slaTarget?: string; // ISO String
   resolutionEvidence?: string[];
   contactPhone?: string;

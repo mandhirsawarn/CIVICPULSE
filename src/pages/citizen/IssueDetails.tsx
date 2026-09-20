@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ChevronLeft, MapPin, Clock, ShieldAlert, CheckCircle2, XCircle, Camera, Check, ThumbsUp, ThumbsDown, Users, Flame, MessageSquare, Send, Sparkles, Building2, AlertTriangle, Layers } from 'lucide-react';
+import { ChevronLeft, MapPin, Clock, ShieldAlert, CheckCircle2, XCircle, Camera, Check, ThumbsUp, ThumbsDown, Users, Flame, MessageSquare, Send, Sparkles, Building2, AlertTriangle, Layers, UserCheck } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
@@ -12,10 +12,12 @@ import { getCategoryEmoji, getStatusVariant } from '../../components/ui/ReportCa
 
 const IssueDetails = () => {
   const { id } = useParams();
-  const { issues, updateIssueStatus, voteIssue, addCommunityComment, requestCommunityRecheck, currentUser } = useStore();
+  const { issues, updateIssueStatus, voteIssue, addCommunityComment, requestCommunityRecheck, reopenIssue, currentUser } = useStore();
   const issue = issues.find(i => i.id === id);
 
   const [hasVerified, setHasVerified] = useState(false);
+  const [isReopening, setIsReopening] = useState(false);
+  const [reopenReasonText, setReopenReasonText] = useState('');
   const [recheckMessage, setRecheckMessage] = useState('');
   const [commentText, setCommentText] = useState('');
   const userId = currentUser?.id || 'demo-user-1';
@@ -30,17 +32,25 @@ const IssueDetails = () => {
 
   const isResolved = issue.status === 'RESOLVED';
   const isCitizenVerified = issue.status === 'CITIZEN_VERIFIED';
+  const isReopened = issue.status === 'REOPENED';
   const hasRecheck = (issue.communityRecheckRequests || 0) > 0;
 
-  const handleVerify = (isFixed: boolean) => {
+  const handleVerify = async (isFixed: boolean) => {
     if (isFixed) {
-      updateIssueStatus(issue.id, 'CITIZEN_VERIFIED');
+      await updateIssueStatus(issue.id, 'CITIZEN_VERIFIED');
       setRecheckMessage('');
+      setHasVerified(true);
     } else {
-      updateIssueStatus(issue.id, 'IN_PROGRESS');
-      requestCommunityRecheck(issue.id);
-      setRecheckMessage('Community feedback received — Re-review in progress');
+      setIsReopening(true);
     }
+  };
+
+  const handleConfirmReopen = async () => {
+    const reason = reopenReasonText.trim() || 'Citizen reported that this issue remains unresolved on the ground.';
+    await reopenIssue(issue.id, reason);
+    requestCommunityRecheck(issue.id);
+    setRecheckMessage(`Reopened: "${reason}"`);
+    setIsReopening(false);
     setHasVerified(true);
   };
 
@@ -175,21 +185,39 @@ const IssueDetails = () => {
           </Card>
 
           {/* Section 4: Resolution Evidence & Community Verification */}
-          {(isResolved || isCitizenVerified || hasRecheck) && (
+          {(isResolved || isCitizenVerified || isReopened || hasRecheck) && (
             <Card className="p-6 rounded-2xl border border-blue-200/80 shadow-md bg-gradient-to-br from-white to-blue-50/20 relative overflow-hidden">
               <div className="border-b border-slate-100 pb-4 mb-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                     <CheckCircle2 size={18} className="text-emerald-600" /> Resolution Evidence & Verification
                   </h3>
-                  <Badge variant={isCitizenVerified ? 'success' : isResolved ? 'info' : 'warning'} className="text-xs font-semibold">
-                    {isCitizenVerified ? 'Citizen Confirmed' : isResolved ? 'Awaiting Citizen Verification' : 'Re-review in progress'}
+                  <Badge variant={isCitizenVerified ? 'success' : isResolved ? 'info' : isReopened ? 'danger' : 'warning'} className="text-xs font-semibold">
+                    {isCitizenVerified ? 'Citizen Confirmed' : isResolved ? 'Awaiting Citizen Verification' : isReopened ? 'Reopened by Citizen' : 'Re-review in progress'}
                   </Badge>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
                   Compare the reported issue with the resolution proof submitted by municipal ground workers.
                 </p>
               </div>
+
+              {/* Official Authority Resolution Note */}
+              {issue.resolutionNote && (
+                <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-3.5 mb-4 text-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                      <CheckCircle2 size={14} className="text-emerald-700" />
+                      Official Resolution Summary
+                    </span>
+                    {issue.resolutionDate && (
+                      <span className="text-[10.5px] text-emerald-700 font-mono">
+                        {new Date(issue.resolutionDate).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-700 leading-relaxed font-normal">{issue.resolutionNote}</p>
+                </div>
+              )}
 
               {/* Before and After Side-by-Side Comparison */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -224,33 +252,78 @@ const IssueDetails = () => {
               </div>
 
               {/* Explicit Verification Actions */}
-              {!isCitizenVerified && (
+              {isResolved && !isCitizenVerified && !isReopened && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
                   <h4 className="text-sm font-bold text-slate-900">Is this issue actually resolved on ground?</h4>
                   <p className="text-xs text-slate-500">
                     Your verification ensures municipal accountability and maintains high civic data integrity.
                   </p>
-                  
-                  <div className="flex flex-col sm:flex-row gap-3 pt-1">
-                    <Button 
-                      onClick={() => handleVerify(true)} 
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-xs"
-                    >
-                      <CheckCircle2 size={18} className="mr-2" /> Looks Resolved
-                    </Button>
-                    <Button 
-                      onClick={() => handleVerify(false)} 
-                      variant="outline"
-                      className="flex-1 border-rose-200 text-rose-600 hover:bg-rose-50 font-bold h-11 rounded-xl"
-                    >
-                      <XCircle size={18} className="mr-2" /> Still a Problem
-                    </Button>
+
+                  {isReopening ? (
+                    <div className="space-y-3 pt-2 bg-rose-50/60 p-3.5 rounded-xl border border-rose-200">
+                      <label className="text-xs font-bold text-rose-900 block">
+                        Why is this issue still a problem? (Authority will receive this immediately)
+                      </label>
+                      <textarea
+                        value={reopenReasonText}
+                        onChange={(e) => setReopenReasonText(e.target.value)}
+                        placeholder="e.g. The pothole was only filled with loose sand and has collapsed again..."
+                        className="w-full text-xs p-2.5 rounded-lg border border-rose-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 min-h-[70px]"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={handleConfirmReopen}
+                          className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg"
+                        >
+                          Submit Reopen Request
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsReopening(false)}
+                          className="text-xs font-medium rounded-lg"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                      <Button 
+                        onClick={() => handleVerify(true)} 
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-xs"
+                      >
+                        <CheckCircle2 size={18} className="mr-2" /> Looks Resolved
+                      </Button>
+                      <Button 
+                        onClick={() => handleVerify(false)} 
+                        variant="outline"
+                        className="flex-1 border-rose-200 text-rose-600 hover:bg-rose-50 font-bold h-11 rounded-xl"
+                      >
+                        <XCircle size={18} className="mr-2" /> Still a Problem
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Reopened Banner */}
+              {isReopened && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertTriangle size={15} className="text-rose-600" />
+                    <span>Issue Reopened for Re-inspection</span>
                   </div>
+                  <p className="text-slate-700 pl-5 font-normal">
+                    {issue.reopenedReason ? `Citizen feedback: "${issue.reopenedReason}"` : 'A citizen indicated this issue is still persistent on site.'}
+                  </p>
+                  <p className="text-[10.5px] text-rose-600 font-semibold pl-5 pt-0.5">
+                    Municipal authorities and field leads have been notified to re-evaluate this site.
+                  </p>
                 </div>
               )}
 
               {/* Re-review Feedback Notice */}
-              {(recheckMessage || hasRecheck) && (
+              {(recheckMessage || hasRecheck) && !isReopened && (
                 <div className="mt-3 p-3 bg-amber-50 border border-amber-300/80 rounded-xl text-amber-900 text-xs font-semibold flex items-center gap-2">
                   <ShieldAlert size={16} className="text-amber-600 shrink-0" />
                   <span>
@@ -479,10 +552,16 @@ const IssueDetails = () => {
                     <Building2 size={14} className="text-blue-600" />
                     {issue.assignedDepartmentId || issue.aiAnalysis.suggestedDepartment}
                   </span>
+                  {issue.assignedOfficer && (
+                    <div className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-1 rounded-md mt-2 w-full">
+                      <UserCheck size={13} className="text-emerald-600 shrink-0" />
+                      <span>Officer: <strong className="font-semibold">{issue.assignedOfficer}</strong></span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Estimated SLA Window</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-1">Target Resolution (ETA)</span>
                   <span className="font-bold text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 inline-block font-mono">
                     ⏱️ {issue.estimatedResolutionTime || '2-5 days'}
                   </span>
