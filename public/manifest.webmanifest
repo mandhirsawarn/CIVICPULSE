@@ -1,0 +1,48 @@
+{
+  "name": "CivicPulse",
+  "short_name": "CivicPulse",
+  "description": "AI-powered citizen civic issue reporting and collaborative resolution platform.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0F172A",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512 any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512 any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": [
+    "utilities",
+    "government",
+    "productivity"
+  ],
+  "shortcuts": [
+    {
+      "name": "Report Issue",
+      "url": "/report",
+      "description": "Report a civic problem with AI triage and GPS"
+    },
+    {
+      "name": "Explore Map",
+      "url": "/map",
+      "description": "View live civic issues and city ward map"
+    },
+    {
+      "name": "Community Pulse",
+      "url": "/community-pulse",
+      "description": "Vote and prioritize local neighborhood issues"
+    }
+  ]
+}

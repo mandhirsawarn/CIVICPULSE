@@ -138,6 +138,7 @@ export interface ReportDraft {
   voiceTranscript?: string;
   voiceDuration?: number;
   photoId?: string; // id in IndexedDB
+  photo?: string | null;
   locationStr: string;
   coordinates: { lat: number; lng: number } | null;
   locationSource: 'GPS' | 'Manual' | 'Search';
@@ -145,6 +146,7 @@ export interface ReportDraft {
   urgency: Urgency | '';
   contactPhone: string;
   contactEmail: string;
+  aiResult?: AIAnalysis | null;
   step: number;
   updatedAt: string;
 }

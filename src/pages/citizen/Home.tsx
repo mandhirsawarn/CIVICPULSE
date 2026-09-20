@@ -273,7 +273,7 @@ const Home = () => {
           }
         />
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-4.5">
           {issues.slice(0, 3).map((issue) => {
             const locality = getApproximateLocality(issue.location?.address, issue.location?.ward, issue.location?.zone);
             const upvotes = issue.upvotes || 0;
@@ -285,11 +285,11 @@ const Home = () => {
               <Card 
                 key={issue.id} 
                 noPadding 
-                className="overflow-hidden group hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(15,23,42,0.06)] transition-all duration-200 border-slate-200/80 flex flex-col rounded-2xl"
+                className="overflow-hidden group hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(15,23,42,0.06)] transition-all duration-200 border-slate-200/80 flex flex-col rounded-2xl bg-white"
               >
-                <Link to={`/issue/${issue.id}`} className="block flex flex-col h-full">
-                  {/* 16:9 Image Preview with Status Badge */}
-                  <div className="relative aspect-video w-full overflow-hidden bg-slate-100">
+                <Link to={`/issue/${issue.id}`} className="flex flex-col h-full">
+                  {/* Compact ~155px Image Preview with Status Badge */}
+                  <div className="relative h-[155px] sm:h-[160px] w-full overflow-hidden bg-slate-100 shrink-0">
                     {issue.photos && issue.photos[0] ? (
                       <img 
                         src={issue.photos[0]} 
@@ -299,42 +299,44 @@ const Home = () => {
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-1 bg-gradient-to-br from-slate-50 to-slate-100">
                         <span className="text-2xl">{getCategoryEmoji(issue.category)}</span>
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{issue.category}</span>
+                        <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wider">{issue.category}</span>
                       </div>
                     )}
-                    <div className="absolute top-3 right-3 z-10">
-                      <Badge variant={getStatusVariant(issue.status)} className="shadow-xs bg-white/95 backdrop-blur-xs font-bold text-[10px] uppercase tracking-wider">
+                    <div className="absolute top-2.5 right-2.5 z-10">
+                      <Badge variant={getStatusVariant(issue.status)} className="shadow-xs bg-white/95 backdrop-blur-xs font-bold text-[9.5px] uppercase tracking-wider py-0.5 px-2">
                         {issue.status.replace('_', ' ')}
                       </Badge>
                     </div>
                   </div>
 
-                  {/* Card Body */}
-                  <div className="p-4 sm:p-5 flex flex-col flex-1">
-                    <div className="text-[10px] font-bold text-blue-600 mb-1 uppercase tracking-wider">
-                      {issue.category}
+                  {/* Compact Card Body */}
+                  <div className="p-3.5 sm:p-4 flex flex-col flex-1 gap-2">
+                    <div>
+                      <div className="text-[9.5px] font-bold text-blue-600 uppercase tracking-wider">
+                        {issue.category}
+                      </div>
+                      <h3 className="font-bold text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors text-sm mt-0.5">
+                        {issue.title}
+                      </h3>
                     </div>
-                    <h3 className="font-bold text-slate-900 mb-2 line-clamp-1 group-hover:text-blue-600 transition-colors text-sm sm:text-base">
-                      {issue.title}
-                    </h3>
                     
-                    <div className="flex items-center text-xs text-slate-500 gap-3 mb-4 flex-wrap">
-                      <span className="flex items-center gap-1 truncate max-w-[160px]">
-                        <MapPin size={12} className="text-blue-600 shrink-0" /> {locality}
+                    <div className="flex items-center text-[11px] text-slate-500 gap-2 flex-wrap">
+                      <span className="flex items-center gap-1 truncate max-w-[150px]">
+                        <MapPin size={11} className="text-blue-600 shrink-0" /> {locality}
                       </span>
                       <span>•</span>
                       <span className="flex items-center gap-1 shrink-0">
-                        <Clock size={11} /> {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                        <Clock size={10} /> {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
 
-                    {/* Community Support Bar */}
-                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 mb-4">
-                      <div className="flex items-center justify-between text-[11px] mb-1 font-medium">
-                        <span className="text-slate-500">Community Support</span>
-                        <span className="font-bold text-slate-900 tabular-nums">{supportPercent}%</span>
+                    {/* Streamlined Community Support Bar */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5">
+                      <div className="flex items-center justify-between text-[10.5px] mb-1">
+                        <span className="text-slate-500 font-medium">Community Support</span>
+                        <span className="font-bold text-slate-800 tabular-nums">{supportPercent}%</span>
                       </div>
-                      <div className="w-full bg-slate-200/80 h-1.5 rounded-full overflow-hidden">
+                      <div className="w-full bg-slate-200/70 h-1.5 rounded-full overflow-hidden">
                         <div 
                           className="bg-blue-600 h-full rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(10, supportPercent))}%` }}
@@ -342,11 +344,11 @@ const Home = () => {
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-100 mt-auto flex items-center justify-between">
+                    <div className="pt-2 border-t border-slate-100 mt-auto flex items-center justify-between">
                       <PriorityBadge priority={issue.priority || issue.citizenUrgency} score={issue.priorityScore} size="sm" />
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 group-hover:text-blue-700">
+                      <span className="inline-flex items-center gap-1 text-[11.5px] font-bold text-blue-600 group-hover:text-blue-700">
                         <span>View Report</span>
-                        <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
+                        <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     </div>
                   </div>

@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, 
   Info, CheckCircle2, Crosshair, Mic, Languages, Layers3, Trash2, X, 
-  Edit3, Square, RefreshCw, Construction, Lightbulb, Droplets, Wrench, Shield, HelpCircle 
+  Edit3, Square, RefreshCw, Construction, Lightbulb, Droplets, Wrench, Shield, HelpCircle,
+  Sparkles, Image as ImageIcon 
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
@@ -129,25 +130,80 @@ const ReportIssue = () => {
   const [isCompressing, setIsCompressing] = useState(false);
   const [storageError, setStorageError] = useState(false);
 
+  // Draft prompt & Offline state
+  const [showDraftPrompt, setShowDraftPrompt] = useState(false);
+  const [showConfirmStartNew, setShowConfirmStartNew] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  // Online / Offline listeners
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Purge any stale Whisper caches left from previous sessions on mount
   useEffect(() => {
     clearOldWhisperCaches().catch(() => {});
   }, []);
 
-  // Sync draft on mount if available
+  // Check on mount if an existing draft exists
   useEffect(() => {
-    if (reportDraft && !category && !description) {
+    if (reportDraft && (reportDraft.category || reportDraft.description || reportDraft.photo || reportDraft.photoId || (reportDraft.step && reportDraft.step > 1))) {
+      setShowDraftPrompt(true);
+    }
+  }, []);
+
+  // Resume draft handler
+  const handleResumeDraft = () => {
+    if (reportDraft) {
       if (reportDraft.category) setCategory(reportDraft.category);
-      if (reportDraft.description) {
-        setDescription(reportDraft.description);
-      }
+      if (reportDraft.description) setDescription(reportDraft.description);
       if (reportDraft.urgency) setUrgency(reportDraft.urgency as Urgency);
       if (reportDraft.locationStr) setLocationStr(reportDraft.locationStr);
       if (reportDraft.coordinates) setCoordinates(reportDraft.coordinates);
       if (reportDraft.contactPhone) setContactPhone(reportDraft.contactPhone);
       if (reportDraft.contactEmail) setContactEmail(reportDraft.contactEmail);
+      if (reportDraft.aiResult) setAiResult(reportDraft.aiResult);
+      if (reportDraft.step) setStep(Math.min(reportDraft.step, 5));
+      if (reportDraft.photo) {
+        setPhoto(reportDraft.photo);
+      } else {
+        if ('indexedDB' in window) {
+          import('../../utils/indexedDB').then(({ getMediaBlob }) => {
+            getMediaBlob('current-report-photo').then((data) => {
+              if (data && typeof data === 'string') setPhoto(data);
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+      }
     }
-  }, []);
+    setShowDraftPrompt(false);
+  };
+
+  // Start fresh report handler (with confirmation)
+  const handleConfirmStartNew = () => {
+    clearReportDraft();
+    setCategory('');
+    setDescription('');
+    setUrgency('');
+    setPhoto(null);
+    setCoordinates(null);
+    setLocationStr('Fetching location...');
+    setContactPhone('');
+    setContactEmail('');
+    setAiResult(null);
+    setStep(1);
+    setShowConfirmStartNew(false);
+    setShowDraftPrompt(false);
+  };
 
   // Update draft as user edits
   useEffect(() => {
@@ -161,10 +217,11 @@ const ReportIssue = () => {
         locationSource,
         contactPhone,
         contactEmail,
-        step
+        step,
+        photo
       });
     }
-  }, [category, description, urgency, locationStr, coordinates, locationSource, contactPhone, contactEmail, step]);
+  }, [category, description, urgency, locationStr, coordinates, locationSource, contactPhone, contactEmail, step, photo]);
 
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -321,7 +378,7 @@ const ReportIssue = () => {
     };
   }, []);
 
-  // Photo handlers
+  // Photo handlers with IndexedDB persistence
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -329,6 +386,15 @@ const ReportIssue = () => {
         setIsCompressing(true);
         const compressedBase64 = await compressImage(file);
         setPhoto(compressedBase64);
+        updateReportDraft({ photo: compressedBase64, photoId: 'current-report-photo' });
+        try {
+          if ('indexedDB' in window) {
+            const { saveMediaBlob } = await import('../../utils/indexedDB');
+            await saveMediaBlob('current-report-photo', compressedBase64);
+          }
+        } catch (idbErr) {
+          console.warn("IndexedDB photo save notice:", idbErr);
+        }
       } catch (error) {
         console.error("Failed to compress image:", error);
         alert("Failed to process image. Please try another one.");
@@ -336,10 +402,21 @@ const ReportIssue = () => {
         setIsCompressing(false);
       }
     }
+    // Reset input value so taking/uploading the same photo again triggers change
+    e.target.value = '';
   };
 
-  const handleRemovePhoto = () => {
+  const handleRemovePhoto = async () => {
     setPhoto(null);
+    updateReportDraft({ photo: null, photoId: undefined });
+    try {
+      if ('indexedDB' in window) {
+        const { deleteMediaBlob } = await import('../../utils/indexedDB');
+        await deleteMediaBlob('current-report-photo');
+      }
+    } catch {
+      // ignore
+    }
   };
 
   // Geolocation & Map handlers
@@ -610,7 +687,81 @@ const ReportIssue = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-2 sm:py-4 animate-fade-in">
+    <div className="max-w-4xl mx-auto py-2 sm:py-4 pb-24 md:pb-6 animate-fade-in">
+      {/* Offline Status Alert */}
+      {!isOnline && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-3.5 flex items-center gap-3 text-xs font-semibold shadow-xs animate-fade-in">
+          <div className="h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+          <span className="flex-1">You’re offline. Your report is saved on this device.</span>
+        </div>
+      )}
+
+      {/* Saved Draft Resume Prompt Banner */}
+      {showDraftPrompt && step === 1 && (
+        <div className="mb-5 bg-gradient-to-r from-blue-50 to-indigo-50/70 border border-blue-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Sparkles size={17} className="text-blue-400" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Continue your saved report?</h4>
+              <p className="text-xs text-slate-600 mt-0.5">
+                You have an unfinished report saved on this device. Would you like to resume where you left off?
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+            <Button 
+              type="button" 
+              size="sm" 
+              onClick={handleResumeDraft} 
+              className="text-xs font-bold bg-slate-900 text-white flex-1 sm:flex-initial"
+            >
+              Continue Draft
+            </Button>
+            <Button 
+              type="button" 
+              size="sm" 
+              variant="outline" 
+              onClick={() => setShowConfirmStartNew(true)} 
+              className="text-xs font-semibold text-slate-600 hover:text-red-600 border-slate-200 hover:border-red-200 flex-1 sm:flex-initial"
+            >
+              Start New Report
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal to Discard Saved Draft */}
+      {showConfirmStartNew && (
+        <div data-modal="confirm-start-new" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 relative overflow-hidden text-center border border-slate-200/80 animate-scale-up">
+            <div className="mx-auto w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100 flex items-center justify-center mb-4">
+              <AlertTriangle size={28} />
+            </div>
+            <h3 className="text-xl font-extrabold text-slate-900 mb-2">Discard saved report?</h3>
+            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+              Starting a new report will permanently remove your currently saved draft progress.
+            </p>
+            <div className="flex flex-col gap-2.5">
+              <Button 
+                onClick={handleConfirmStartNew} 
+                className="w-full h-11 text-sm font-bold bg-red-600 text-white hover:bg-red-700 rounded-xl shadow-xs"
+              >
+                Start New Report
+              </Button>
+              <Button 
+                onClick={() => setShowConfirmStartNew(false)} 
+                variant="outline" 
+                className="w-full h-11 text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl border-slate-200"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Step Indicator */}
       <div className="mb-6 flex justify-between items-center bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-x-auto hide-scrollbar">
         {STEPS.map((s, idx) => {
@@ -977,7 +1128,15 @@ const ReportIssue = () => {
                 })}
               </div>
               
-              <div className="flex justify-end mt-auto pt-4 border-t border-slate-100">
+              <div className="flex justify-between items-center mt-auto pt-4 border-t border-slate-100">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setStep(1)} 
+                  className="font-semibold text-slate-600"
+                >
+                  <ChevronLeft size={16} className="mr-1" /> Back
+                </Button>
                 <Button onClick={() => setStep(3)} disabled={!urgency} size="lg" className="px-8 font-bold">
                   Continue <ChevronRight size={18} className="ml-1" />
                 </Button>
@@ -985,7 +1144,7 @@ const ReportIssue = () => {
             </motion.div>
           )}
 
-          {/* STEP 3: EVIDENCE */}
+          {/* STEP 3: EVIDENCE (Camera Capture + Gallery Upload + Image Controls) */}
           {step === 3 && (
             <motion.div key="step3" variants={pageVariants} initial="initial" animate="in" exit="out" className="flex flex-col h-full flex-1">
               <div className="mb-4">
@@ -995,43 +1154,135 @@ const ReportIssue = () => {
               </div>
               <PageHeader 
                 title="Provide Evidence" 
-                description="Upload a photo to help AI assess severity and verify the report." 
+                description="Take a live photo or upload from your device gallery to help AI verify the issue." 
                 className="mb-6"
               />
               
-              <div className="flex-1 flex flex-col items-center justify-center mb-8">
+              <div className="flex-1 flex flex-col items-center justify-center mb-8 w-full max-w-xl mx-auto">
                 {photo ? (
-                  <div className="w-full max-w-md mx-auto relative group">
-                    <img src={photo} alt="Issue evidence" className="w-full h-64 object-cover rounded-2xl border border-slate-200/80 shadow-xs" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 rounded-2xl backdrop-blur-xs">
-                      <label className="bg-white text-slate-900 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-100 shadow-md">
-                        Replace Photo
-                        <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                  <div className="w-full flex flex-col items-center">
+                    {/* Responsive Image Preview Container */}
+                    <div className="w-full relative rounded-2xl overflow-hidden border border-slate-200/80 shadow-md bg-slate-900 aspect-video max-h-[320px] flex items-center justify-center">
+                      <img 
+                        src={photo} 
+                        alt="Civic issue evidence" 
+                        className="w-full h-full object-contain" 
+                      />
+                      <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-xs text-white text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                        <CheckCircle2 size={13} className="text-emerald-400" />
+                        <span>Evidence Attached</span>
+                      </div>
+                    </div>
+
+                    {/* Explicit Accessible Preview Actions: [Retake Photo] [Replace from Gallery] [Remove] */}
+                    <div className="flex flex-wrap items-center justify-center gap-2.5 mt-4 w-full">
+                      <label className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 shadow-xs cursor-pointer transition-all duration-150">
+                        <Camera size={14} className="text-blue-400" />
+                        <span>Take Photo</span>
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*" 
+                          capture="environment" 
+                          onChange={handlePhotoUpload} 
+                        />
                       </label>
-                      <button onClick={handleRemovePhoto} className="bg-red-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-red-700 shadow-md cursor-pointer">
-                        Remove
+
+                      <label className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-slate-50 border border-slate-200 shadow-xs cursor-pointer transition-all duration-150">
+                        <ImageIcon size={14} className="text-slate-600" />
+                        <span>Replace</span>
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*" 
+                          onChange={handlePhotoUpload} 
+                        />
+                      </label>
+
+                      <button 
+                        type="button" 
+                        onClick={handleRemovePhoto} 
+                        className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200/80 shadow-xs cursor-pointer transition-all duration-150"
+                      >
+                        <Trash2 size={14} />
+                        <span>Remove</span>
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center w-full max-w-md h-64 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50/50 hover:bg-slate-100/60 hover:border-slate-400 cursor-pointer transition-all duration-180 group">
-                    <div className="w-14 h-14 bg-white shadow-xs text-slate-700 rounded-2xl flex items-center justify-center mb-3 group-hover:scale-105 border border-slate-200 transition-transform">
-                      <Camera size={26} className="text-slate-700" />
+                  <div className="w-full flex flex-col items-center">
+                    {/* Dual Action Choices: Direct Camera vs Device Gallery */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                      {/* 1. Take Photo with native camera environment capture */}
+                      <label className="flex flex-col items-center justify-center p-6 sm:p-7 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 hover:bg-blue-50/50 hover:border-blue-400 cursor-pointer transition-all duration-200 group text-center">
+                        <div className="w-13 h-13 bg-white shadow-xs text-slate-900 rounded-2xl flex items-center justify-center mb-3 group-hover:scale-105 border border-slate-200 transition-transform">
+                          <Camera size={24} className="text-blue-600" />
+                        </div>
+                        <span className="font-bold text-slate-900 text-sm mb-1">Take Photo</span>
+                        <span className="text-xs text-slate-500 mb-2">Capture with device camera</span>
+                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200/60 uppercase tracking-wider">
+                          Mobile Camera
+                        </span>
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*" 
+                          capture="environment" 
+                          onChange={handlePhotoUpload} 
+                        />
+                      </label>
+
+                      {/* 2. Upload from Gallery */}
+                      <label className="flex flex-col items-center justify-center p-6 sm:p-7 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 hover:bg-blue-50/50 hover:border-blue-400 cursor-pointer transition-all duration-200 group text-center">
+                        <div className="w-13 h-13 bg-white shadow-xs text-slate-900 rounded-2xl flex items-center justify-center mb-3 group-hover:scale-105 border border-slate-200 transition-transform">
+                          <ImageIcon size={24} className="text-slate-700" />
+                        </div>
+                        <span className="font-bold text-slate-900 text-sm mb-1">Upload from Gallery</span>
+                        <span className="text-xs text-slate-500 mb-2">Select existing photo file</span>
+                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 uppercase tracking-wider">
+                          JPG, PNG, WEBP
+                        </span>
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*" 
+                          onChange={handlePhotoUpload} 
+                        />
+                      </label>
                     </div>
-                    <span className="font-bold text-slate-900 text-sm mb-1">Take Photo / Upload Evidence *</span>
-                    <span className="text-xs text-slate-400">JPG, PNG, WEBP (Max 5MB compressed)</span>
-                    {isCompressing ? (
-                      <Loader2 className="animate-spin text-blue-600 mt-3" size={24} />
-                    ) : (
-                      <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+
+                    {isCompressing && (
+                      <div className="flex items-center gap-2 mt-4 text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200/60 animate-pulse">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>Optimizing evidence photo for AI triage...</span>
+                      </div>
                     )}
-                  </label>
+
+                    {!photo && (
+                      <p className="text-xs text-amber-600 mt-4 font-medium flex items-center gap-1.5">
+                        <AlertTriangle size={14} />
+                        <span>Please capture or upload a photo to proceed</span>
+                      </p>
+                    )}
+                  </div>
                 )}
-                {!photo && <p className="text-xs text-amber-600 mt-2 font-medium">Please upload a photo of the issue to proceed</p>}
               </div>
               
-              <div className="flex justify-end mt-auto pt-4 border-t border-slate-100">
-                <Button onClick={() => setStep(4)} disabled={!photo} size="lg" className="px-8 font-bold">
+              <div className="flex justify-between items-center mt-auto pt-4 border-t border-slate-100">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setStep(2)} 
+                  className="font-semibold text-slate-600"
+                >
+                  <ChevronLeft size={16} className="mr-1" /> Back
+                </Button>
+                <Button 
+                  onClick={() => setStep(4)} 
+                  disabled={!photo || isCompressing} 
+                  size="lg" 
+                  className="px-8 font-bold"
+                >
                   Continue <ChevronRight size={18} className="ml-1" />
                 </Button>
               </div>
@@ -1247,16 +1498,25 @@ const ReportIssue = () => {
                 </div>
               </div>
               
-              <div className="mt-auto flex justify-between items-center pt-4 border-t border-slate-100">
-                <Button 
-                  type="button" 
-                  variant={isDropPinMode ? "primary" : "outline"} 
-                  onClick={handleManualLocation} 
-                  size="lg"
-                  className={cn(isDropPinMode ? "bg-amber-600 hover:bg-amber-700 text-white" : "")}
-                >
-                  📍 {isDropPinMode ? "Click Map to Pin" : "Drop Pin"}
-                </Button>
+              <div className="mt-auto flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setStep(3)} 
+                    className="font-semibold text-slate-600"
+                  >
+                    <ChevronLeft size={16} className="mr-1" /> Back
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant={isDropPinMode ? "primary" : "outline"} 
+                    onClick={handleManualLocation} 
+                    className={cn("font-bold text-xs", isDropPinMode ? "bg-amber-600 hover:bg-amber-700 text-white" : "")}
+                  >
+                    📍 {isDropPinMode ? "Click Map to Pin" : "Drop Pin"}
+                  </Button>
+                </div>
                 <Button 
                   onClick={() => {
                     setStep(5);
@@ -1464,11 +1724,29 @@ const ReportIssue = () => {
                 )}
               </div>
 
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <Button onClick={handleSubmit} size="lg" className="w-full shadow-md h-12 text-sm font-bold">
-                  Submit Report to CivicPulse
+              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setStep(4)} 
+                  className="font-semibold text-slate-600 h-12 px-5"
+                >
+                  <ChevronLeft size={16} className="mr-1" /> Edit
+                </Button>
+                <Button 
+                  onClick={handleSubmit} 
+                  size="lg" 
+                  disabled={!isOnline}
+                  className="flex-1 shadow-md h-12 text-sm font-bold bg-slate-900 text-white hover:bg-slate-800"
+                >
+                  Submit Report
                 </Button>
               </div>
+              {!isOnline && (
+                <p className="text-center text-xs text-amber-600 font-medium mt-2">
+                  Internet connection is required to submit. Your draft is safely saved locally.
+                </p>
+              )}
             </motion.div>
           )}
 

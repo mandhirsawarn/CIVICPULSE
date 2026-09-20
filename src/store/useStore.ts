@@ -24,6 +24,7 @@ interface StoreState {
   setReportDraft: (draft: ReportDraft | null) => void;
   updateReportDraft: (updates: Partial<ReportDraft>) => void;
   clearReportDraft: () => void;
+  hasUnsavedReportData: () => boolean;
   voteIssue: (issueId: string, voteType: 'up' | 'down' | null) => void;
   addCommunityComment: (issueId: string, text: string) => void;
   requestCommunityRecheck: (issueId: string) => void;
@@ -67,7 +68,32 @@ export const useStore = create<StoreState>()(
               category: '', description: '', locationStr: 'Fetching location...', coordinates: null, locationSource: 'GPS', searchQuery: '', urgency: '', contactPhone: '', contactEmail: '', step: 1, ...updates, updatedAt: new Date().toISOString() 
             } as ReportDraft
       })),
-      clearReportDraft: () => set({ reportDraft: null }),
+      clearReportDraft: () => {
+        try {
+          if ('indexedDB' in window) {
+            import('../utils/indexedDB').then(({ deleteMediaBlob }) => {
+              deleteMediaBlob('current-report-photo').catch(() => {});
+            }).catch(() => {});
+          }
+        } catch {
+          // ignore
+        }
+        set({ reportDraft: null });
+      },
+      hasUnsavedReportData: () => {
+        const draft = get().reportDraft;
+        if (!draft) return false;
+        return Boolean(
+          draft.category ||
+          (draft.description && draft.description.trim().length > 0) ||
+          draft.urgency ||
+          draft.photo ||
+          draft.photoId ||
+          draft.coordinates ||
+          (draft.contactPhone && draft.contactPhone.trim().length > 0) ||
+          (draft.contactEmail && draft.contactEmail.trim().length > 0)
+        );
+      },
       voteIssue: (issueId, voteType) => set((state) => {
         const userId = state.currentUser?.id || 'demo-user-1';
         return {
