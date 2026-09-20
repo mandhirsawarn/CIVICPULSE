@@ -29,6 +29,10 @@ export interface AIAnalysis {
   matchedSignals?: string[];
   possibleDuplicate?: boolean;
   estimatedResolutionTime?: string;
+  duplicateOf?: string;
+  duplicateConfidence?: 'HIGH' | 'POSSIBLE' | 'LOW';
+  duplicateSimilarityScore?: number;
+  duplicateMatchReasons?: string[];
 }
 
 export interface Issue {
@@ -67,6 +71,14 @@ export interface Issue {
   contactPhone?: string;
   contactEmail?: string;
   timeline: TimelineEvent[];
+  // Duplicate Report Detection & Clustering fields
+  isDuplicate?: boolean;
+  duplicateOf?: string; // ID of the original/primary issue
+  duplicateConfidence?: 'HIGH' | 'POSSIBLE' | 'LOW';
+  duplicateSimilarityScore?: number; // 0 - 100
+  duplicateReasons?: string[];
+  duplicateCount?: number; // on original issue: number of corroborating reports
+  relatedReportIds?: string[]; // on original issue: list of linked duplicate report IDs
   // Community Pulse fields
   upvotes?: number;
   downvotes?: number;

@@ -238,7 +238,7 @@ export const analyzeIssue = async (
 };
 
 // Haversine formula for distance in kilometers
-const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+export const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371; 
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
@@ -250,80 +250,435 @@ const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon
   return R * c; 
 };
 
+// ============================================================================
+// MULTI-SIGNAL DUPLICATE REPORT DETECTION ENGINE
+// ============================================================================
+
+// Configurable detection constants
+export const DUPLICATE_CONFIG = {
+  NEARBY_RADIUS_METERS: 100,      // Primary nearby radius threshold (~100m)
+  EXTENDED_RADIUS_METERS: 300,    // Extended candidate radius (~300m)
+  MAX_CANDIDATE_RADIUS_METERS: 500, // Hard cutoff: beyond 500m cannot be the same physical issue
+  HIGH_CONFIDENCE_THRESHOLD: 75,  // >= 75% is HIGH duplicate confidence
+  POSSIBLE_THRESHOLD: 50          // >= 50% is POSSIBLE duplicate
+};
+
+// Canonical synonym groups for semantic description matching
+const SYNONYM_GROUPS: Record<string, string[]> = {
+  pothole: ['pothole', 'crater', 'hole', 'cavity', 'depression', 'rut', 'pit', 'roadbreak'],
+  garbage: ['garbage', 'trash', 'waste', 'rubbish', 'dump', 'debris', 'litter', 'refuse', 'filth'],
+  waterlogging: ['waterlogging', 'waterlogged', 'flooding', 'flood', 'puddle', 'waterpool', 'overflow', 'inundation', 'stagnant'],
+  drainage: ['drainage', 'drain', 'sewer', 'sewage', 'gutter', 'nallah', 'culvert', 'pipe'],
+  streetlight: ['streetlight', 'light', 'lamp', 'lightpost', 'pole', 'lantern', 'illumination'],
+  damage: ['broken', 'damaged', 'cracked', 'shattered', 'crumbled', 'caved', 'ruined', 'hazardous'],
+  large: ['large', 'huge', 'massive', 'deep', 'giant', 'big', 'wide', 'major', 'extensive'],
+  small: ['small', 'tiny', 'minor', 'shallow', 'little'],
+  entrance: ['gate', 'entrance', 'entry', 'door', 'exit', 'barrier', 'arch'],
+  road: ['road', 'street', 'lane', 'highway', 'pathway', 'avenue', 'sector', 'crossing', 'chowk', 'intersection']
+};
+
+const STOP_WORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'with',
+  'by', 'of', 'from', 'this', 'that', 'there', 'here', 'it', 'its', 'near', 'beside', 'around', 'front',
+  'side', 'back', 'has', 'have', 'had', 'been', 'my', 'our', 'very', 'causing', 'severe', 'please', 'help'
+]);
+
+/**
+ * Normalizes and maps tokens to canonical synonyms
+ */
+const tokenizeAndNormalize = (text: string): string[] => {
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 1 && !STOP_WORDS.has(w));
+
+  return words.map(w => {
+    for (const [canonical, synonyms] of Object.entries(SYNONYM_GROUPS)) {
+      if (synonyms.includes(w)) {
+        return canonical;
+      }
+    }
+    return w;
+  });
+};
+
+/**
+ * Calculates semantic text similarity between two descriptions (0.0 to 1.0)
+ * Uses word token overlap with synonym expansion (Dice + Jaccard)
+ */
+export const computeTextSimilarity = (desc1: string, desc2: string): number => {
+  if (!desc1 || !desc2) return 0;
+  const tokens1 = tokenizeAndNormalize(desc1);
+  const tokens2 = tokenizeAndNormalize(desc2);
+
+  if (tokens1.length === 0 || tokens2.length === 0) return 0;
+
+  const set1 = new Set(tokens1);
+  const set2 = new Set(tokens2);
+
+  let intersectionCount = 0;
+  for (const token of set1) {
+    if (set2.has(token)) {
+      intersectionCount++;
+    }
+  }
+
+  const unionSize = new Set([...tokens1, ...tokens2]).size;
+  const jaccard = unionSize > 0 ? intersectionCount / unionSize : 0;
+  const dice = (2 * intersectionCount) / (tokens1.length + tokens2.length);
+
+  // Blend Jaccard and Dice for smoother score
+  return (jaccard * 0.4) + (dice * 0.6);
+};
+
+// Memory cache for perceptual image fingerprints
+const imageFingerprintCache = new Map<string, number[]>();
+
+/**
+ * Computes a fast perceptual luminance fingerprint (16x16 grid = 256 values)
+ * Resilient against compression, resizing, aspect changes, and slight modifications.
+ */
+export const computeImageFingerprint = async (photoSrc: string): Promise<number[] | null> => {
+  if (!photoSrc) return null;
+  if (imageFingerprintCache.has(photoSrc)) {
+    return imageFingerprintCache.get(photoSrc)!;
+  }
+
+  return new Promise((resolve) => {
+    // If not in a browser environment or canvas unavailable
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      resolve(null);
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    // Fallback timeout in case image loading hangs
+    const timer = setTimeout(() => {
+      resolve(null);
+    }, 1500);
+
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 16;
+        canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, 16, 16);
+        const imgData = ctx.getImageData(0, 0, 16, 16).data;
+        const fingerprint: number[] = [];
+
+        for (let i = 0; i < imgData.length; i += 4) {
+          // Standard ITU-R BT.601 perceptual luminance formula
+          const lum = Math.round(0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2]);
+          fingerprint.push(lum);
+        }
+
+        imageFingerprintCache.set(photoSrc, fingerprint);
+        resolve(fingerprint);
+      } catch {
+        resolve(null);
+      }
+    };
+
+    img.onerror = () => {
+      clearTimeout(timer);
+      resolve(null);
+    };
+
+    img.src = photoSrc;
+  });
+};
+
+/**
+ * Compares two image fingerprints using normalized Euclidean & Mean Absolute Difference.
+ * Returns similarity 0.0 to 1.0.
+ */
+export const compareImageFingerprints = (fp1: number[], fp2: number[]): number => {
+  if (fp1.length !== fp2.length || fp1.length === 0) return 0;
+
+  let totalDiff = 0;
+  for (let i = 0; i < fp1.length; i++) {
+    totalDiff += Math.abs(fp1[i] - fp2[i]);
+  }
+
+  const maxPossibleDiff = fp1.length * 255;
+  const normalizedDiff = totalDiff / maxPossibleDiff;
+  return Math.max(0, 1 - normalizedDiff * 2.0); // Scale so noticeable differences drop faster
+};
+
+/**
+ * Checks category compatibility (exact match = 1.0, related = 0.75, unrelated = 0.0)
+ */
+export const computeCategorySimilarity = (cat1: IssueCategory, cat2: IssueCategory): number => {
+  if (cat1 === cat2) return 1.0;
+
+  const compatiblePairs: [IssueCategory, IssueCategory][] = [
+    ['Pothole', 'Road Damage'],
+    ['Waterlogging', 'Drainage'],
+    ['Waterlogging', 'Water Leakage'],
+    ['Garbage', 'Illegal Dumping'],
+    ['Broken Footpath', 'Road Damage'],
+    ['Traffic Sign', 'Public Safety']
+  ];
+
+  for (const [a, b] of compatiblePairs) {
+    if ((cat1 === a && cat2 === b) || (cat1 === b && cat2 === a)) {
+      return 0.75;
+    }
+  }
+
+  return 0.0;
+};
+
+export interface DuplicateSignalScores {
+  imageSimilarity: number;
+  locationScore: number;
+  descriptionScore: number;
+  categoryScore: number;
+  aiClassificationScore: number;
+  isSameUser: boolean;
+}
+
+export interface CandidateMatch {
+  issue: Issue;
+  distanceMeters: number;
+  similarity: number; // 0 - 100
+  confidence: 'HIGH' | 'POSSIBLE' | 'LOW';
+  signals: DuplicateSignalScores;
+  reasons: string[];
+}
+
+export interface DuplicateDetectionResult {
+  isDuplicate: boolean;
+  similarityScore: number;
+  confidence: 'HIGH' | 'POSSIBLE' | 'LOW';
+  relatedIssues: CandidateMatch[];
+  matchReasons: string[];
+}
+
+/**
+ * Robust Multi-Signal Duplicate Report Detection
+ */
 export const detectDuplicates = async (
   lat: number, 
   lng: number, 
   category: IssueCategory, 
   description: string,
-  existingIssues: Issue[]
-): Promise<{ isDuplicate: boolean; similarityScore: number; relatedIssues: { issue: Issue; distance: number; similarity: number }[]; matchReasons: string[] }> => {
-  await delay(800);
-  
-  const RADIUS_KM = 0.5; // 500 meters
-  
-  const text = description.toLowerCase();
+  existingIssues: Issue[],
+  photo?: string | null,
+  reporterId?: string
+): Promise<DuplicateDetectionResult> => {
+  // Small non-blocking async delay to simulate AI processing and yield to UI
+  await delay(300);
 
-  const related = existingIssues.map(issue => {
-    // Check status (only open issues)
-    if (['RESOLVED', 'CITIZEN_VERIFIED'].includes(issue.status)) return null;
-    
-    // Check distance
-    const distance = getDistanceFromLatLonInKm(lat, lng, issue.location.lat, issue.location.lng);
-    if (distance > RADIUS_KM) return null;
-
-    let similarity = 0;
-
-    // Distance (max 40 points)
-    const distScore = Math.max(0, 40 * (1 - (distance / RADIUS_KM)));
-    similarity += distScore;
-
-    // Category match (max 30 points)
-    const catScore = issue.category === category ? 30 : 0;
-    similarity += catScore;
-
-    // Keyword overlap (max 15 points)
-    let keywordScore = 0;
-    if (issue.aiAnalysis?.keywords) {
-       const overlap = issue.aiAnalysis.keywords.filter(kw => text.includes(kw.toLowerCase())).length;
-       if (overlap > 0) {
-         keywordScore = Math.min(15, overlap * 7.5);
-         similarity += keywordScore;
-       }
-    }
-
-    // Time proximity (max 15 points, based on 7 days)
-    const issueDate = new Date(issue.createdAt).getTime();
-    const daysDiff = (Date.now() - issueDate) / (1000 * 60 * 60 * 24);
-    const timeScore = Math.max(0, 15 * (1 - (daysDiff / 7)));
-    similarity += timeScore;
-
-    if (similarity > 50) {
-      return {
-        issue,
-        distance,
-        similarity: Math.round(similarity)
-      };
-    }
-    return null;
-  }).filter(Boolean) as { issue: Issue; distance: number; similarity: number }[];
-
-  // Sort by similarity descending
-  related.sort((a, b) => b.similarity - a.similarity);
-
-  const topMatch = related[0];
-  const matchReasons: string[] = [];
-  
-  if (topMatch) {
-    if (topMatch.distance < 0.1) matchReasons.push('Very close geographic proximity (< 100m)');
-    if (topMatch.issue.category === category) matchReasons.push('Exact category match');
-    const issueDate = new Date(topMatch.issue.createdAt).getTime();
-    if ((Date.now() - issueDate) < 24 * 60 * 60 * 1000) matchReasons.push('Reported within the last 24 hours');
+  if (!existingIssues || existingIssues.length === 0) {
+    return {
+      isDuplicate: false,
+      similarityScore: 0,
+      confidence: 'LOW',
+      relatedIssues: [],
+      matchReasons: []
+    };
   }
 
-  return { 
-    isDuplicate: related.length > 0, 
+  // Pre-calculate new report's image fingerprint if photo provided
+  let newImageFp: number[] | null = null;
+  if (photo) {
+    try {
+      newImageFp = await computeImageFingerprint(photo);
+    } catch {
+      newImageFp = null;
+    }
+  }
+
+  // Candidate generation & scoring
+  const candidates: CandidateMatch[] = [];
+
+  for (const issue of existingIssues) {
+    // 1. Geographic distance check (Candidate filtering stage)
+    const distKm = getDistanceFromLatLonInKm(lat, lng, issue.location.lat, issue.location.lng);
+    const distMeters = Math.round(distKm * 1000);
+
+    // Hard cutoff: outside 500m is never considered the same localized physical issue
+    if (distMeters > DUPLICATE_CONFIG.MAX_CANDIDATE_RADIUS_METERS) {
+      continue;
+    }
+
+    // Proximity score (0.0 to 1.0)
+    let locationScore = 0;
+    if (distMeters <= 50) {
+      locationScore = 1.0;
+    } else if (distMeters <= DUPLICATE_CONFIG.NEARBY_RADIUS_METERS) {
+      locationScore = 0.85 + 0.15 * (1 - (distMeters - 50) / 50);
+    } else if (distMeters <= DUPLICATE_CONFIG.EXTENDED_RADIUS_METERS) {
+      locationScore = 0.4 + 0.45 * (1 - (distMeters - 100) / 200);
+    } else {
+      locationScore = 0.4 * (1 - (distMeters - 300) / 200);
+    }
+
+    // 2. Category similarity (0.0 to 1.0)
+    const categoryScore = computeCategorySimilarity(category, issue.category);
+
+    // Edge case guard: If same location but completely incompatible category (e.g. Broken Streetlight vs Pothole)
+    // and descriptions don't match, this is definitely NOT a duplicate!
+    if (categoryScore === 0) {
+      const textQuickCheck = computeTextSimilarity(description, issue.description);
+      if (textQuickCheck < 0.3) {
+        continue; // Skip incompatible candidate
+      }
+    }
+
+    // 3. Description semantic similarity (0.0 to 1.0)
+    const descriptionScore = computeTextSimilarity(description, issue.description);
+
+    // 4. Photo / Visual similarity (0.0 to 1.0)
+    let imageSimilarity = 0;
+    let hasImageComparison = false;
+
+    if (photo && issue.photos && issue.photos.length > 0) {
+      const existingPhoto = issue.photos[0];
+      hasImageComparison = true;
+
+      // Exact string / URL match
+      if (photo === existingPhoto) {
+        imageSimilarity = 1.0;
+      } else if (newImageFp) {
+        // Compare perceptual fingerprints
+        const existingFp = await computeImageFingerprint(existingPhoto);
+        if (existingFp) {
+          imageSimilarity = compareImageFingerprints(newImageFp, existingFp);
+        } else {
+          // If existing image fingerprint failed, compare base64 similarity if data url
+          imageSimilarity = 0.5;
+        }
+      }
+    }
+
+    // 5. AI Classification / Urgency alignment
+    let aiClassificationScore = 0;
+    if (issue.aiAnalysis) {
+      const deptMatch = (DEPARTMENT_ROUTING[category] || '') === issue.aiAnalysis.suggestedDepartment;
+      aiClassificationScore = deptMatch ? 1.0 : 0.5;
+    } else {
+      aiClassificationScore = categoryScore;
+    }
+
+    // Check if same user is submitting twice
+    const isSameUser = Boolean(reporterId && issue.reporterId && reporterId === issue.reporterId);
+
+    // Composite Weighting Calculation
+    let compositeScore = 0;
+    if (hasImageComparison) {
+      // Standard weights: Image 35%, Location 30%, Description 15%, Category 10%, AI 10%
+      compositeScore = (
+        (imageSimilarity * 35) +
+        (locationScore * 30) +
+        (descriptionScore * 15) +
+        (categoryScore * 10) +
+        (aiClassificationScore * 10)
+      );
+    } else {
+      // Rebalanced weights when photo is not compared: Location 45%, Description 25%, Category 20%, AI 10%
+      compositeScore = (
+        (locationScore * 45) +
+        (descriptionScore * 25) +
+        (categoryScore * 20) +
+        (aiClassificationScore * 10)
+      );
+    }
+
+    // Bonus for same user submitting the same issue twice in nearby location
+    if (isSameUser && locationScore >= 0.7 && categoryScore >= 0.75) {
+      compositeScore = Math.min(100, compositeScore + 15);
+    }
+
+    // Bonus for high visual match + close proximity
+    if (imageSimilarity >= 0.85 && locationScore >= 0.8) {
+      compositeScore = Math.min(100, compositeScore + 10);
+    }
+
+    // Penalize if location is not close (> 250m)
+    if (distMeters > 250) {
+      compositeScore = compositeScore * 0.6;
+    }
+
+    const finalSimilarity = Math.round(compositeScore);
+
+    // Classify Confidence
+    let confidence: 'HIGH' | 'POSSIBLE' | 'LOW' = 'LOW';
+    if (finalSimilarity >= DUPLICATE_CONFIG.HIGH_CONFIDENCE_THRESHOLD) {
+      confidence = 'HIGH';
+    } else if (finalSimilarity >= DUPLICATE_CONFIG.POSSIBLE_THRESHOLD) {
+      confidence = 'POSSIBLE';
+    }
+
+    // Only collect candidates that meet at least POSSIBLE threshold (or close to it)
+    if (finalSimilarity >= 45) {
+      const reasons: string[] = [];
+      if (distMeters < 50) {
+        reasons.push('Identical geographic coordinates (< 50m)');
+      } else if (distMeters <= DUPLICATE_CONFIG.NEARBY_RADIUS_METERS) {
+        reasons.push(`Very close location (~${distMeters}m away)`);
+      } else {
+        reasons.push(`Nearby location (~${distMeters}m away)`);
+      }
+
+      if (categoryScore === 1.0) {
+        reasons.push(`Identical issue category (${issue.category})`);
+      } else if (categoryScore > 0) {
+        reasons.push(`Related category (${issue.category})`);
+      }
+
+      if (hasImageComparison && imageSimilarity >= 0.7) {
+        reasons.push(`High visual photo similarity (${Math.round(imageSimilarity * 100)}%)`);
+      }
+
+      if (descriptionScore >= 0.4) {
+        reasons.push('Matching semantic description keywords');
+      }
+
+      if (isSameUser) {
+        reasons.push('Previous report submitted from your account');
+      }
+
+      candidates.push({
+        issue,
+        distanceMeters: distMeters,
+        similarity: finalSimilarity,
+        confidence,
+        signals: {
+          imageSimilarity,
+          locationScore,
+          descriptionScore,
+          categoryScore,
+          aiClassificationScore,
+          isSameUser
+        },
+        reasons
+      });
+    }
+  }
+
+  // Sort descending by similarity score
+  candidates.sort((a, b) => b.similarity - a.similarity);
+
+  const topMatch = candidates[0];
+  const isDuplicate = topMatch ? (topMatch.confidence === 'HIGH' || topMatch.confidence === 'POSSIBLE') : false;
+
+  return {
+    isDuplicate,
     similarityScore: topMatch ? topMatch.similarity : 0,
-    relatedIssues: related,
-    matchReasons
+    confidence: topMatch ? topMatch.confidence : 'LOW',
+    relatedIssues: candidates,
+    matchReasons: topMatch ? topMatch.reasons : []
   };
 };

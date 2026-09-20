@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { ShieldAlert, AlertTriangle, Activity, MapPin, Users, CheckCircle2, ChevronRight, X, Clock, BrainCircuit, ArrowRight, Flame } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, Activity, MapPin, Users, CheckCircle2, ChevronRight, X, Clock, BrainCircuit, ArrowRight, Flame, Layers } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Issue, FieldTeam } from '../../types';
 import { Card } from '../../components/ui/Card';
@@ -67,11 +67,16 @@ const IssueIntelligence = () => {
                 >
                   <td className="px-6 py-4 font-mono font-bold text-xs text-slate-900">{issue.id}</td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-semibold text-xs text-slate-900">{issue.category}</span>
-                      {issue.aiAnalysis?.possibleDuplicate && (
-                        <span className="bg-amber-50 text-amber-700 border border-amber-200/60 px-1.5 py-0.5 rounded text-[10px] font-bold" title="Possible Duplicate">
+                      {(issue.isDuplicate || issue.aiAnalysis?.possibleDuplicate) && (
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200/80 px-1.5 py-0.5 rounded text-[9.5px] font-bold" title={issue.duplicateOf ? `Duplicate of ${issue.duplicateOf}` : 'Possible Duplicate'}>
                           DUPLICATE
+                        </span>
+                      )}
+                      {(issue.duplicateCount || 0) > 0 && (
+                        <span className="bg-blue-50 text-blue-700 border border-blue-200/80 px-1.5 py-0.5 rounded text-[9.5px] font-bold" title={`${issue.duplicateCount} citizen corroboration reports linked`}>
+                          +{issue.duplicateCount} LINKED
                         </span>
                       )}
                     </div>
@@ -199,6 +204,65 @@ const IssueIntelligence = () => {
                   </div>
                 </Card>
               )}
+
+              {/* Corroborating Reports Cluster */}
+              {((selectedIssue.duplicateCount || 0) > 0 || selectedIssue.isDuplicate || (selectedIssue.relatedReportIds && selectedIssue.relatedReportIds.length > 0)) && (() => {
+                const relatedList = issues.filter(i => 
+                  i.id !== selectedIssue.id && (
+                    (selectedIssue.relatedReportIds && selectedIssue.relatedReportIds.includes(i.id)) ||
+                    i.duplicateOf === selectedIssue.id ||
+                    (selectedIssue.duplicateOf && (i.id === selectedIssue.duplicateOf || i.duplicateOf === selectedIssue.duplicateOf))
+                  )
+                );
+
+                return (
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                        <Layers size={15} className="text-blue-600" />
+                        Corroborating Reports Cluster ({relatedList.length + 1} Total)
+                      </h3>
+                      {selectedIssue.isDuplicate && (
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                          Duplicate of {selectedIssue.duplicateOf}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      All citizen submissions mapped to this underlying physical incident. Field authorities can inspect all angles and confirm ground impact.
+                    </p>
+
+                    <div className="space-y-2">
+                      {relatedList.map(rel => (
+                        <div 
+                          key={rel.id} 
+                          onClick={() => setSelectedIssue(rel)}
+                          className="bg-white border border-slate-200/80 hover:border-blue-300 p-2.5 rounded-xl cursor-pointer transition-all flex items-center justify-between shadow-2xs group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {rel.photos[0] ? (
+                              <img src={rel.photos[0]} alt="" className="w-10 h-10 rounded-lg object-cover border border-slate-100 shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                                <MapPin size={14} />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-bold text-xs text-blue-700">{rel.id}</span>
+                                <span className="text-[10px] text-slate-400">{new Date(rel.createdAt).toLocaleDateString()}</span>
+                              </div>
+                              <p className="text-xs text-slate-700 truncate font-medium group-hover:text-blue-600 transition-colors">{rel.title}</p>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-blue-600 shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform">Inspect →</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Smart Resource Allocation */}
               {(selectedIssue.status === 'REPORTED' || selectedIssue.status === 'AI_VERIFIED') && (

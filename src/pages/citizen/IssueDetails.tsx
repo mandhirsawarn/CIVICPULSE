@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ChevronLeft, MapPin, Clock, ShieldAlert, CheckCircle2, XCircle, Camera, Check, ThumbsUp, ThumbsDown, Users, Flame, MessageSquare, Send, Sparkles, Building2 } from 'lucide-react';
+import { ChevronLeft, MapPin, Clock, ShieldAlert, CheckCircle2, XCircle, Camera, Check, ThumbsUp, ThumbsDown, Users, Flame, MessageSquare, Send, Sparkles, Building2, AlertTriangle, Layers } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
@@ -50,6 +50,15 @@ const IssueDetails = () => {
   const supportPercent = totalVotes > 0 ? Math.round((upvotes / totalVotes) * 100) : 0;
   const userVote = issue.userVotes?.[userId];
 
+  // Find related corroborating reports
+  const relatedReports = issues.filter(i => 
+    i.id !== issue.id && (
+      (issue.relatedReportIds && issue.relatedReportIds.includes(i.id)) ||
+      i.duplicateOf === issue.id ||
+      (issue.duplicateOf && (i.id === issue.duplicateOf || (i.duplicateOf && i.duplicateOf === issue.duplicateOf)))
+    )
+  );
+
   return (
     <div className="max-w-6xl mx-auto py-4 md:py-6 animate-fade-in space-y-6 pb-12">
       {/* Navigation Header */}
@@ -67,6 +76,34 @@ const IssueDetails = () => {
         
         {/* Main Content: Left Column */}
         <div className="lg:col-span-2 space-y-6">
+
+          {/* DUPLICATE REPORT NOTICE BANNER */}
+          {issue.isDuplicate && issue.duplicateOf && (
+            <div className="bg-amber-50 border border-amber-300/90 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+                  <AlertTriangle size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-bold text-slate-900">Duplicate Report • Citizen Corroboration</h3>
+                    <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+                      {issue.duplicateConfidence || 'HIGH'} ({issue.duplicateSimilarityScore || 85}% match)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    This issue was identified as a duplicate of original report <span className="font-mono font-bold text-slate-900">{issue.duplicateOf}</span>. It is preserved in your history and provides corroborating data to field teams.
+                  </p>
+                </div>
+              </div>
+              <Link
+                to={`/issue/${issue.duplicateOf}`}
+                className="shrink-0 text-xs font-bold text-blue-700 bg-white border border-blue-200 px-3.5 py-2 rounded-xl hover:bg-blue-50 transition-colors shadow-2xs"
+              >
+                View Original ({issue.duplicateOf}) →
+              </Link>
+            </div>
+          )}
           
           {/* Section 1: Report Overview Header */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] space-y-3">
@@ -228,6 +265,63 @@ const IssueDetails = () => {
                   <span>Resolution successfully verified by citizens on ground. Thank you!</span>
                 </div>
               )}
+            </Card>
+          )}
+
+          {/* Section: Related Citizen Reports Cluster */}
+          {relatedReports.length > 0 && (
+            <Card className="p-5 rounded-2xl border border-blue-200/80 bg-gradient-to-br from-white via-blue-50/20 to-indigo-50/20 shadow-xs flex flex-col gap-3.5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Layers size={17} className="text-blue-600" />
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Related Citizen Reports ({relatedReports.length + 1} reports)
+                  </h3>
+                </div>
+                <span className="text-xs font-bold text-blue-700 bg-blue-100/70 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                  {relatedReports.length + 1} citizen reports describe this issue
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Multiple citizens have reported or corroborated this same civic issue near this location. Each report provides additional ground photos and helps municipal authorities verify the scale without creating duplicate work orders.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {relatedReports.map(rel => (
+                  <Link 
+                    key={rel.id} 
+                    to={`/issue/${rel.id}`} 
+                    className="p-3 rounded-xl bg-white border border-slate-200/80 hover:border-blue-300 hover:shadow-2xs transition-all flex items-start gap-3 group"
+                  >
+                    {rel.photos && rel.photos[0] ? (
+                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                        <img src={rel.photos[0]} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-400 shrink-0">
+                        <MapPin size={18} />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                          {rel.id}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {new Date(rel.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                      <h5 className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                        {rel.title}
+                      </h5>
+                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                        {rel.description}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </Card>
           )}
 

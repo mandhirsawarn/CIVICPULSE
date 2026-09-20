@@ -1,23 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Camera, MapPin, ChevronRight, ChevronLeft, Loader2, AlertTriangle, 
   Info, CheckCircle2, Crosshair, Mic, Languages, Layers3, Trash2, X, 
   Edit3, Square, RefreshCw, Construction, Lightbulb, Droplets, Wrench, Shield, HelpCircle,
-  Sparkles, Image as ImageIcon 
+  Sparkles, Image as ImageIcon, ThumbsUp, ThumbsDown, ExternalLink, Clock
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useStore } from '../../store/useStore';
-import { analyzeIssue, detectDuplicates } from '../../services/aiService';
+import { analyzeIssue, detectDuplicates, DuplicateDetectionResult } from '../../services/aiService';
 import { AIAnalysis, IssueCategory, Issue, Urgency } from '../../types';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { PriorityBadge } from '../../components/ui/PriorityBadge';
+import { Badge } from '../../components/ui/Badge';
+import { getStatusVariant } from '../../components/ui/ReportCard';
 import { compressImage } from '../../utils/imageCompression';
 import { fetchNominatimSearch, reverseGeocodeCoordinates, SearchResultItem } from '../../services/locationService';
 import { startNativeSpeechRecognition, SpeechRecognitionController, formatTranscript, detectLanguageFromText, clearOldWhisperCaches } from '../../services/transcriptionService';
@@ -74,7 +76,7 @@ const MapViewport = ({ coordinates }: { coordinates: { lat: number; lng: number 
 const ReportIssue = () => {
   const navigate = useNavigate();
   const routerLocation = useLocation();
-  const { addIssue, currentUser, issues, reportDraft, updateReportDraft, clearReportDraft } = useStore();
+  const { addIssue, currentUser, issues, reportDraft, updateReportDraft, clearReportDraft, voteIssue } = useStore();
   
   const [step, setStep] = useState(1);
   const [category, setCategory] = useState<string>('');
@@ -140,7 +142,9 @@ const ReportIssue = () => {
   // AI & Submission states
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
-  const [duplicateData, setDuplicateData] = useState<{isDuplicate: boolean, relatedIssues: { issue: Issue; distance: number; similarity: number }[]} | null>(null);
+  const [duplicateResult, setDuplicateResult] = useState<DuplicateDetectionResult | null>(null);
+  const [supportedDuplicateId, setSupportedDuplicateId] = useState<string | null>(null);
+  const [submittedIssue, setSubmittedIssue] = useState<Issue | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [storageError, setStorageError] = useState(false);
 
@@ -828,11 +832,19 @@ const ReportIssue = () => {
     try {
       const [analysis, dupes] = await Promise.all([
         analyzeIssue(photo, finalDescription, (urgency || 'MODERATE') as Urgency, (category || 'Other') as IssueCategory),
-        detectDuplicates(coordinates?.lat || 0, coordinates?.lng || 0, (category || 'Other') as IssueCategory, finalDescription, issues)
+        detectDuplicates(
+          coordinates?.lat || 0,
+          coordinates?.lng || 0,
+          (category || 'Other') as IssueCategory,
+          finalDescription,
+          issues,
+          photo,
+          currentUser?.id
+        )
       ]);
       
       setAiResult(analysis);
-      setDuplicateData(dupes);
+      setDuplicateResult(dupes);
     } catch (err) {
       console.error("Error during analysis:", err);
     } finally {
@@ -852,9 +864,15 @@ const ReportIssue = () => {
     }
     const finalDescription = description.trim();
     const newId = `CP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const topMatch = duplicateResult?.isDuplicate && duplicateResult.relatedIssues.length > 0 
+      ? duplicateResult.relatedIssues[0] 
+      : null;
+
+    const isDuplicateReport = Boolean(topMatch && (topMatch.confidence === 'HIGH' || topMatch.confidence === 'POSSIBLE'));
     
     try {
-      addIssue({
+      const newIssue: Issue = {
         id: newId,
         title: `${category || aiResult?.detectedCategory || 'Civic Issue'} at ${locationStr.split(',')[0]}`,
         description: finalDescription,
@@ -880,14 +898,41 @@ const ReportIssue = () => {
           const hours = severity === 'CRITICAL' ? 4 : severity === 'HIGH' ? 12 : severity === 'MEDIUM' ? 24 : 72;
           return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
         })(),
-        aiAnalysis: aiResult || undefined,
+        aiAnalysis: aiResult ? {
+          ...aiResult,
+          possibleDuplicate: isDuplicateReport,
+          duplicateOf: isDuplicateReport && topMatch ? topMatch.issue.id : undefined,
+          duplicateConfidence: isDuplicateReport && topMatch ? topMatch.confidence : undefined,
+          duplicateSimilarityScore: isDuplicateReport && topMatch ? topMatch.similarity : undefined,
+          duplicateMatchReasons: isDuplicateReport && topMatch ? topMatch.reasons : undefined
+        } : undefined,
+        isDuplicate: isDuplicateReport,
+        duplicateOf: isDuplicateReport && topMatch ? topMatch.issue.id : undefined,
+        duplicateConfidence: isDuplicateReport && topMatch ? topMatch.confidence : undefined,
+        duplicateSimilarityScore: isDuplicateReport && topMatch ? topMatch.similarity : undefined,
+        duplicateReasons: isDuplicateReport && topMatch ? topMatch.reasons : undefined,
         contactPhone: contactPhone || undefined,
         contactEmail: contactEmail || undefined,
         timeline: [
-          { id: `tl-${Date.now()}`, status: 'REPORTED', timestamp: new Date().toISOString(), description: 'Issue reported by citizen', actor: 'Citizen' },
-          ...(aiResult ? [{ id: `tl-${Date.now()+1}`, status: 'AI_VERIFIED' as const, timestamp: new Date().toISOString(), description: 'AI categorized and prioritized', actor: 'System AI' }] : [])
+          { 
+            id: `tl-${Date.now()}`, 
+            status: 'REPORTED', 
+            timestamp: new Date().toISOString(), 
+            description: isDuplicateReport && topMatch ? `Issue reported by citizen (linked as corroborating report to ${topMatch.issue.id})` : 'Issue reported by citizen', 
+            actor: 'Citizen' 
+          },
+          ...(aiResult ? [{ 
+            id: `tl-${Date.now()+1}`, 
+            status: 'AI_VERIFIED' as const, 
+            timestamp: new Date().toISOString(), 
+            description: isDuplicateReport && topMatch ? `AI categorized and linked as duplicate corroboration (${topMatch.similarity}% similarity)` : 'AI categorized and prioritized', 
+            actor: 'System AI' 
+          }] : [])
         ]
-      });
+      };
+
+      addIssue(newIssue);
+      setSubmittedIssue(newIssue);
       
       clearReportDraft();
       setStorageError(false);
@@ -1770,6 +1815,177 @@ const ReportIssue = () => {
               />
 
               <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1">
+                {/* PRE-SUBMIT DUPLICATE REPORT WARNING */}
+                {duplicateResult && duplicateResult.isDuplicate && duplicateResult.relatedIssues.length > 0 && (() => {
+                  const topDup = duplicateResult.relatedIssues[0];
+                  const isHigh = topDup.confidence === 'HIGH';
+                  const hasSupported = supportedDuplicateId === topDup.issue.id || topDup.issue.userVotes?.[currentUser?.id || ''] === 'up';
+                  const upvotes = (topDup.issue.upvotes || 0) + (supportedDuplicateId === topDup.issue.id && topDup.issue.userVotes?.[currentUser?.id || ''] !== 'up' ? 1 : 0);
+                  const downvotes = topDup.issue.downvotes || 0;
+                  const totalVotes = upvotes + downvotes;
+                  const supportPercent = totalVotes > 0 ? Math.round((upvotes / totalVotes) * 100) : 0;
+
+                  return (
+                    <div className={cn(
+                      "rounded-2xl p-4 sm:p-5 border transition-all animate-fade-in shadow-xs",
+                      isHigh 
+                        ? "bg-gradient-to-br from-amber-50/90 via-orange-50/30 to-white border-amber-300" 
+                        : "bg-gradient-to-br from-blue-50/80 via-slate-50 to-white border-blue-200"
+                    )}>
+                      {/* Warning Header */}
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className={cn(
+                          "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs mt-0.5",
+                          isHigh ? "bg-amber-500 text-white" : "bg-blue-600 text-white"
+                        )}>
+                          <AlertTriangle size={18} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                              <span>⚠️ Similar issue found</span>
+                              <span className={cn(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
+                                isHigh ? "bg-amber-100 text-amber-800 border border-amber-300" : "bg-blue-100 text-blue-800 border border-blue-200"
+                              )}>
+                                {isHigh ? 'High Similarity' : 'Possible Duplicate'} ({topDup.similarity}%)
+                              </span>
+                            </h4>
+                            <Link 
+                              to={`/issue/${topDup.issue.id}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline cursor-pointer"
+                            >
+                              View similar report →
+                            </Link>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                            We found a similar report near your selected location. Supporting an existing report helps authorities understand how many citizens are affected without creating duplicate complaints.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Similar Report Preview Card */}
+                      <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 sm:p-4 shadow-2xs mb-3">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          {topDup.issue.photos && topDup.issue.photos[0] ? (
+                            <div className="w-full sm:w-28 h-24 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                              <img src={topDup.issue.photos[0]} alt={topDup.issue.title} className="w-full h-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className="w-full sm:w-28 h-24 rounded-lg bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-400 shrink-0 text-xs">
+                              <MapPin size={20} className="mb-1" />
+                              <span>No photo</span>
+                            </div>
+                          )}
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                  {topDup.issue.id}
+                                </span>
+                                <span className="text-[10px] font-bold uppercase text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                                  {topDup.issue.category}
+                                </span>
+                                <Badge variant={getStatusVariant(topDup.issue.status)} className="text-[9px] px-1.5 py-0 uppercase">
+                                  {topDup.issue.status.replace('_', ' ')}
+                                </Badge>
+                              </div>
+                              <PriorityBadge priority={topDup.issue.priority || 'MEDIUM'} score={topDup.issue.priorityScore} size="sm" />
+                            </div>
+
+                            <h5 className="text-xs sm:text-sm font-bold text-slate-900 truncate mb-1">
+                              {topDup.issue.title}
+                            </h5>
+                            <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed mb-2 font-normal">
+                              {topDup.issue.description}
+                            </p>
+
+                            <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
+                              <span className="flex items-center gap-1 font-medium">
+                                <MapPin size={12} className="text-blue-600" /> {topDup.issue.location.address} (~{topDup.distanceMeters}m away)
+                              </span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                <Clock size={11} /> {new Date(topDup.issue.createdAt).toLocaleDateString()}
+                              </span>
+                              {totalVotes > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                                    👍 {upvotes} votes ({supportPercent}% support)
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* AI Detection Match Signals */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Match Signals:</span>
+                          {topDup.reasons.map((r, i) => (
+                            <span key={i} className="text-[10px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
+                              ✓ {r}
+                            </span>
+                          ))}
+                        </div>
+
+                        <div className="mt-2.5 pt-2 border-t border-slate-100/70 text-[11px] text-amber-800 bg-amber-50/60 p-2 rounded-lg font-medium">
+                          This issue appears similar to the report you were about to submit.
+                        </div>
+                      </div>
+
+                      {/* Citizen Call-to-Actions */}
+                      <div className="bg-white/90 border border-slate-200/80 rounded-xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">
+                            {hasSupported 
+                              ? "Your support has been added to the existing report." 
+                              : "Instead of creating another report, you can support the existing one."}
+                          </p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            {hasSupported 
+                              ? "Your upvote has been recorded. You can still choose to submit a separate report if this is different."
+                              : "Upvoting increases visibility and priority for municipal teams without duplicate tickets."}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            type="button"
+                            variant={hasSupported ? "outline" : "primary"}
+                            size="sm"
+                            onClick={() => {
+                              voteIssue(topDup.issue.id, 'up');
+                              setSupportedDuplicateId(topDup.issue.id);
+                            }}
+                            className={cn(
+                              "font-bold text-xs h-9 px-3.5 flex items-center gap-1.5 shadow-2xs",
+                              hasSupported ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100" : "bg-blue-600 hover:bg-blue-700 text-white"
+                            )}
+                          >
+                            <ThumbsUp size={13} className={hasSupported ? "fill-emerald-600 text-emerald-600" : ""} />
+                            {hasSupported ? "✓ Support Added" : "Support Existing Report"}
+                          </Button>
+
+                          <Link
+                            to={`/issue/${topDup.issue.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-slate-900 px-3 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+                          >
+                            <span>Details</span>
+                            <ExternalLink size={12} />
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Issue Summary Card */}
                 <div className="border border-slate-200/80 rounded-2xl p-5 bg-white shadow-xs space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1975,7 +2191,7 @@ const ReportIssue = () => {
                 )}
               </div>
 
-              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+              <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 <Button 
                   type="button" 
                   variant="outline" 
@@ -1984,13 +2200,40 @@ const ReportIssue = () => {
                 >
                   <ChevronLeft size={16} className="mr-1" /> Edit
                 </Button>
+
+                {duplicateResult?.isDuplicate && duplicateResult.relatedIssues[0] && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const topDup = duplicateResult.relatedIssues[0];
+                      voteIssue(topDup.issue.id, 'up');
+                      setSupportedDuplicateId(topDup.issue.id);
+                    }}
+                    className={cn(
+                      "font-bold text-xs sm:text-sm h-12 px-4 border shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer",
+                      supportedDuplicateId 
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-300" 
+                        : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                    )}
+                  >
+                    <ThumbsUp size={15} className={supportedDuplicateId ? "fill-emerald-600 text-emerald-600" : ""} />
+                    {supportedDuplicateId ? "✓ Supported Existing Report" : "Support Existing Report"}
+                  </Button>
+                )}
+
                 <Button 
                   onClick={handleSubmit} 
                   size="lg" 
                   disabled={!isOnline}
-                  className="flex-1 shadow-md h-12 text-sm font-bold bg-slate-900 text-white hover:bg-slate-800"
+                  className={cn(
+                    "flex-1 shadow-md h-12 text-sm font-bold transition-colors",
+                    duplicateResult?.isDuplicate 
+                      ? "bg-amber-600 hover:bg-amber-700 text-white" 
+                      : "bg-slate-900 text-white hover:bg-slate-800"
+                  )}
                 >
-                  Submit Report
+                  {duplicateResult?.isDuplicate ? "Report Anyway" : "Submit Report"}
                 </Button>
               </div>
               {!isOnline && (
@@ -2007,10 +2250,34 @@ const ReportIssue = () => {
               <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-200/60 flex items-center justify-center mb-4 shadow-xs">
                 <CheckCircle2 size={36} />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-1">Issue Reported Successfully</h2>
-              <p className="text-slate-500 mb-6 font-mono text-xs bg-slate-100 px-3.5 py-1.5 rounded-full border border-slate-200">
-                Incident ID: CP-2026-{Math.floor(1000 + Math.random() * 9000)}
+              <h2 className="text-2xl font-bold text-slate-900 mb-1">
+                {submittedIssue?.isDuplicate ? "Corroborating Report Logged" : "Issue Reported Successfully"}
+              </h2>
+              <p className="text-slate-500 mb-4 font-mono text-xs bg-slate-100 px-3.5 py-1.5 rounded-full border border-slate-200">
+                Incident ID: {submittedIssue?.id || 'CP-2026-REPORT'}
               </p>
+
+              {/* Duplicate Report Tag & Link */}
+              {submittedIssue?.isDuplicate && submittedIssue.duplicateOf && (
+                <div className="bg-amber-50 border border-amber-300/80 rounded-2xl p-4 mb-6 w-full max-w-lg text-left shadow-xs animate-fade-in">
+                  <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wider mb-1">
+                    <AlertTriangle size={15} className="text-amber-600" />
+                    <span>Duplicate Report • Citizen Corroboration</span>
+                  </div>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    This report has been identified as a duplicate and linked to existing issue <span className="font-mono font-bold">{submittedIssue.duplicateOf}</span>. It remains in your My Reports history and reinforces priority for municipal crews.
+                  </p>
+                  <div className="mt-3 pt-2.5 border-t border-amber-200/80 flex items-center justify-between">
+                    <span className="text-[11px] text-amber-700 font-medium">Similar issue detected ({submittedIssue.duplicateSimilarityScore || 85}% match)</span>
+                    <Link
+                      to={`/issue/${submittedIssue.duplicateOf}`}
+                      className="text-xs font-bold text-blue-700 hover:text-blue-900 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      View Original / Similar Report →
+                    </Link>
+                  </div>
+                </div>
+              )}
               
               {aiResult && (
                 <div className="bg-white border border-slate-200/80 rounded-2xl p-6 mb-8 w-full max-w-lg text-left shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden relative">

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, MapPin, Clock, ArrowRight, Inbox } from 'lucide-react';
+import { Search, MapPin, Clock, ArrowRight, Inbox, AlertTriangle, Layers } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { cn } from '../../utils/cn';
 import { Badge } from '../../components/ui/Badge';
@@ -142,16 +142,33 @@ const MyReports = () => {
                   </div>
                   <div className="min-w-0 flex-1 pr-2">
                     <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">{issue.category}</span>
                         <Badge variant={getStatusVariant(issue.status)} className="text-[9.5px] px-1.5 py-0 uppercase font-bold">
                           {issue.status.replace('_', ' ')}
                         </Badge>
+                        {issue.isDuplicate && (
+                          <span className="inline-flex items-center gap-1 text-[9.5px] font-bold bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0 rounded">
+                            <AlertTriangle size={10} className="text-amber-600" /> Duplicate Report
+                          </span>
+                        )}
+                        {(issue.duplicateCount || 0) > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[9.5px] font-bold bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0 rounded">
+                            <Layers size={10} className="text-blue-600" /> {issue.duplicateCount} Corroborations
+                          </span>
+                        )}
                       </div>
-                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1 shrink-0">
                         <Clock size={10} /> {new Date(issue.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
+
+                    {issue.isDuplicate && issue.duplicateOf && (
+                      <div className="text-[10.5px] font-bold text-amber-700 bg-amber-50/70 border border-amber-200/60 px-2 py-0.5 rounded-md mb-1.5 flex items-center justify-between">
+                        <span>Similar to <span className="font-mono">{issue.duplicateOf}</span></span>
+                        <span className="text-blue-600 hover:underline">View Original →</span>
+                      </div>
+                    )}
                     
                     <h4 className="truncate font-bold text-slate-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
                       {issue.title}

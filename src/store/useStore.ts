@@ -161,14 +161,48 @@ export const useStore = create<StoreState>()(
             throw new Error('Please enter a valid email address.');
           }
         }
-        set((state) => ({ issues: [issue, ...state.issues] }));
+
+        set((state) => {
+          let updatedIssues = [issue, ...state.issues];
+
+          // If this is a duplicate of an existing report, update the original master issue
+          if (issue.isDuplicate && issue.duplicateOf) {
+            updatedIssues = updatedIssues.map(existing => {
+              if (existing.id === issue.duplicateOf) {
+                const prevRelated = existing.relatedReportIds || [];
+                const newRelated = prevRelated.includes(issue.id) ? prevRelated : [...prevRelated, issue.id];
+                return {
+                  ...existing,
+                  duplicateCount: (existing.duplicateCount || 0) + 1,
+                  relatedReportIds: newRelated,
+                  timeline: [
+                    ...existing.timeline,
+                    {
+                      id: `tl-dup-${Date.now()}`,
+                      status: existing.status,
+                      timestamp: new Date().toISOString(),
+                      description: `Citizen corroboration report (${issue.id}) linked to this issue`,
+                      actor: 'AI Corroboration Engine'
+                    }
+                  ]
+                };
+              }
+              return existing;
+            });
+          }
+
+          return { issues: updatedIssues };
+        });
+
         get().recalculateHotspots();
         
         // Add a notification for the user
         get().addNotification({
           userId: issue.reporterId,
-          title: 'Issue Reported Successfully',
-          message: `Your report for ${issue.category} has been received and is under AI analysis.`,
+          title: issue.isDuplicate ? 'Report Logged as Corroborating Evidence' : 'Issue Reported Successfully',
+          message: issue.isDuplicate && issue.duplicateOf 
+            ? `Your report for ${issue.category} was linked to existing issue ${issue.duplicateOf}. Authorities have been notified of repeated citizen impact.`
+            : `Your report for ${issue.category} has been received and is under AI analysis.`,
           actionUrl: '/my-reports'
         });
       },

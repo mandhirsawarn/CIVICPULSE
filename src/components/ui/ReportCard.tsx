@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Clock, ThumbsUp, ThumbsDown, ArrowRight, Flame } from 'lucide-react';
+import { MapPin, Clock, ThumbsUp, ThumbsDown, ArrowRight, Flame, AlertTriangle, Layers } from 'lucide-react';
 import { Issue } from '../../types';
 import { Badge } from './Badge';
 import { PriorityBadge } from './PriorityBadge';
@@ -120,7 +120,7 @@ export const ReportCard: React.FC<ReportCardProps> = ({
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                 <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
                   {issue.category}
                 </span>
@@ -128,6 +128,16 @@ export const ReportCard: React.FC<ReportCardProps> = ({
                   <Badge variant={getStatusVariant(issue.status)} className="text-[10px] font-bold uppercase tracking-wider">
                     {issue.status.replace('_', ' ')}
                   </Badge>
+                )}
+                {issue.isDuplicate && (
+                  <span className="inline-flex items-center gap-1 text-[9.5px] font-bold bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0 rounded">
+                    <AlertTriangle size={10} className="text-amber-600" /> Duplicate
+                  </span>
+                )}
+                {(issue.duplicateCount || 0) > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[9.5px] font-bold bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0 rounded">
+                    <Layers size={10} className="text-blue-600" /> {(issue.duplicateCount || 0) + 1} citizen reports
+                  </span>
                 )}
               </div>
               <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-snug line-clamp-1 group-hover:text-blue-600 transition-colors">
