@@ -127,6 +127,8 @@ const ReportIssue = () => {
   const isActionLockedRef = useRef(false);
   const isMountedRef = useRef(true);
   const voiceStateRef = useRef<VoiceState>('IDLE');
+  const recordingSessionIdRef = useRef<number>(0);
+  const lastStopTimestampRef = useRef<number>(0);
 
   const updateVoiceState = (newState: VoiceState) => {
     voiceStateRef.current = newState;
@@ -239,14 +241,34 @@ const ReportIssue = () => {
     return `${mins.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`;
   };
 
-  const startRecording = () => {
+  const startVoiceRecording = (isRecordAgain = false) => {
     // Guard: never start duplicate sessions or start while processing/stopping
     if (isStartingRef.current || isStoppingRef.current || isActionLockedRef.current) {
+      console.log('[VOICE] BLOCKED DUPLICATE START');
       return;
     }
     if (voiceStateRef.current === 'RECORDING' || voiceStateRef.current === 'PROCESSING') {
+      console.log('[VOICE] BLOCKED DUPLICATE START (already active)');
       return;
     }
+
+    // Cooldown check against mobile touch synthetic click race
+    const now = Date.now();
+    if (now - lastStopTimestampRef.current < 800) {
+      console.log('[VOICE] BLOCKED RAPID TOUCH RE-TRIGGER (cooldown)');
+      return;
+    }
+
+    // Guard: only start from IDLE or explicit Record Again
+    if (voiceStateRef.current !== 'IDLE' && !isRecordAgain) {
+      console.log('[VOICE] BLOCKED INVALID STATE START:', voiceStateRef.current);
+      return;
+    }
+
+    console.log('[VOICE] EXPLICIT START');
+    recordingSessionIdRef.current += 1;
+    const currentSessionId = recordingSessionIdRef.current;
+    console.log('[VOICE] SESSION START:', currentSessionId);
 
     isStartingRef.current = true;
 
@@ -270,24 +292,34 @@ const ReportIssue = () => {
       const controller = startNativeSpeechRecognition({
         language: selectedLanguage,
         onStart: () => {
-          if (!isMountedRef.current) return;
+          if (!isMountedRef.current || recordingSessionIdRef.current !== currentSessionId) {
+            console.log('[VOICE] OLD SESSION IGNORED (onStart):', currentSessionId);
+            return;
+          }
           updateVoiceState('RECORDING');
           setRecordingDuration(0);
           setHasUsedVoice(true);
           isStartingRef.current = false;
         },
         onInterim: (_interim, fullPreview) => {
-          if (!isMountedRef.current) return;
+          if (!isMountedRef.current || recordingSessionIdRef.current !== currentSessionId) {
+            return;
+          }
           setLiveTranscript(fullPreview);
           latestTranscriptRef.current = fullPreview;
         },
         onFinal: (finalText) => {
-          if (!isMountedRef.current) return;
+          if (!isMountedRef.current || recordingSessionIdRef.current !== currentSessionId) {
+            return;
+          }
           setLiveTranscript(finalText);
           latestTranscriptRef.current = finalText;
         },
         onError: (errMsg) => {
-          if (!isMountedRef.current) return;
+          if (!isMountedRef.current || recordingSessionIdRef.current !== currentSessionId) {
+            console.log('[VOICE] OLD SESSION IGNORED (onError):', currentSessionId);
+            return;
+          }
           console.warn('[ReportIssue] Voice notice:', errMsg);
           isStartingRef.current = false;
           isStoppingRef.current = false;
@@ -302,12 +334,15 @@ const ReportIssue = () => {
           }
         },
         onEnd: () => {
-          // Engine ended naturally (e.g. mobile pause/silence)
-          if (!isMountedRef.current) return;
+          console.log('[VOICE] RECOGNITION END:', currentSessionId);
+          if (!isMountedRef.current || recordingSessionIdRef.current !== currentSessionId) {
+            console.log('[VOICE] OLD SESSION IGNORED (onEnd):', currentSessionId);
+            return;
+          }
           isStartingRef.current = false;
-          // If still marked as recording when engine terminates, finalize gracefully into PROCESSING -> TRANSCRIBED
+          // Engine ended naturally (e.g. mobile pauses speech). STOP MEANS STOP - finalize gracefully.
           if (voiceStateRef.current === 'RECORDING' && !isStoppingRef.current) {
-            stopRecording();
+            stopVoiceRecording(currentSessionId);
           }
         }
       });
@@ -323,12 +358,12 @@ const ReportIssue = () => {
       if (durationTimerRef.current) clearInterval(durationTimerRef.current);
       const startTime = Date.now();
       durationTimerRef.current = setInterval(() => {
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current || recordingSessionIdRef.current !== currentSessionId) return;
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         setRecordingDuration(elapsed);
         // Automatically stop recording at 60 seconds (maximum limit)
         if (elapsed >= 60) {
-          stopRecording();
+          stopVoiceRecording(currentSessionId);
         }
       }, 1000);
     } catch (err: any) {
@@ -339,9 +374,18 @@ const ReportIssue = () => {
     }
   };
 
-  const stopRecording = () => {
+  const stopVoiceRecording = (targetSessionId?: number) => {
+    if (targetSessionId && targetSessionId !== recordingSessionIdRef.current) {
+      console.log('[VOICE] OLD SESSION IGNORED in stop:', targetSessionId);
+      return;
+    }
+
     if (isStoppingRef.current) return;
     isStoppingRef.current = true;
+    lastStopTimestampRef.current = Date.now();
+    console.log('[VOICE] USER STOP');
+
+    const sessionId = recordingSessionIdRef.current;
     updateVoiceState('PROCESSING');
 
     // Clear duration timer
@@ -360,7 +404,11 @@ const ReportIssue = () => {
 
     // Allow browser audio engine results to settle
     setTimeout(() => {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || recordingSessionIdRef.current !== sessionId) {
+        console.log('[VOICE] OLD SESSION IGNORED in finalize:', sessionId);
+        isStoppingRef.current = false;
+        return;
+      }
 
       const rawText = latestTranscriptRef.current.trim();
       if (!rawText) {
@@ -386,6 +434,8 @@ const ReportIssue = () => {
         updateVoiceState('TRANSCRIBED');
       }
 
+      console.log('[VOICE] TRANSCRIPTION COMPLETE:', sessionId);
+
       // Direct AI analysis with the fresh transcript
       try {
         runAnalysis(finalDescription);
@@ -398,9 +448,28 @@ const ReportIssue = () => {
   };
 
   // Record Again: Explicit user action only. Cleans up previous session before starting exactly ONE new session.
-  const handleRecordAgain = () => {
-    if (isActionLockedRef.current || isStartingRef.current || isStoppingRef.current) return;
+  const handleRecordAgain = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Check cooldown against mobile synthetic clicks
+    const now = Date.now();
+    if (now - lastStopTimestampRef.current < 800) {
+      console.log('[VOICE] BLOCKED RAPID RECORD AGAIN (cooldown)');
+      return;
+    }
+
+    if (isActionLockedRef.current || isStartingRef.current || isStoppingRef.current) {
+      console.log('[VOICE] BLOCKED DUPLICATE START');
+      return;
+    }
     isActionLockedRef.current = true;
+    console.log('[VOICE] EXPLICIT RECORD AGAIN');
+
+    // Invalidate previous session ID immediately
+    recordingSessionIdRef.current += 1;
 
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
@@ -423,9 +492,9 @@ const ReportIssue = () => {
     setTimeout(() => {
       isActionLockedRef.current = false;
       if (isMountedRef.current) {
-        startRecording();
+        startVoiceRecording(true);
       }
-    }, 200);
+    }, 250);
   };
 
   // Centralized microphone button tap handler adhering to strict state machine
@@ -433,21 +502,30 @@ const ReportIssue = () => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (isActionLockedRef.current) return;
+    const now = Date.now();
+    if (now - lastStopTimestampRef.current < 800) {
+      console.log('[VOICE] BLOCKED RAPID MIC TAP (cooldown)');
+      return;
+    }
 
-    if (voiceState === 'IDLE') {
-      startRecording();
-    } else if (voiceState === 'RECORDING') {
-      stopRecording();
-    } else if (voiceState === 'PROCESSING') {
+    if (isActionLockedRef.current || isStartingRef.current || isStoppingRef.current) {
+      console.log('[VOICE] BLOCKED DUPLICATE START');
+      return;
+    }
+
+    if (voiceStateRef.current === 'IDLE') {
+      startVoiceRecording();
+    } else if (voiceStateRef.current === 'RECORDING') {
+      stopVoiceRecording();
+    } else if (voiceStateRef.current === 'PROCESSING') {
       // Ignore microphone action while processing
       return;
-    } else if (voiceState === 'TRANSCRIBED') {
+    } else if (voiceStateRef.current === 'TRANSCRIBED') {
       // In TRANSCRIBED state, do NOT start automatically.
       // Record Again is the only explicit button.
       return;
-    } else if (voiceState === 'ERROR') {
-      handleRecordAgain();
+    } else if (voiceStateRef.current === 'ERROR') {
+      handleRecordAgain(e);
     }
   };
 
@@ -1136,7 +1214,7 @@ const ReportIssue = () => {
                       </div>
                       <Button
                         type="button"
-                        onClick={stopRecording}
+                        onClick={() => stopVoiceRecording()}
                         size="sm"
                         className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs h-8 px-3"
                       >
@@ -1161,7 +1239,7 @@ const ReportIssue = () => {
 
                       <button
                         type="button"
-                        onClick={handleRecordAgain}
+                        onClick={(e) => handleRecordAgain(e)}
                         className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 shrink-0 cursor-pointer"
                       >
                         <RefreshCw size={12} /> Record Again
@@ -1179,7 +1257,7 @@ const ReportIssue = () => {
                       <div className="flex items-center gap-2 shrink-0">
                         <Button 
                           type="button" 
-                          onClick={handleRecordAgain} 
+                          onClick={(e) => handleRecordAgain(e)} 
                           size="sm" 
                           variant="outline" 
                           className="text-xs h-8 border-red-200 text-red-700 hover:bg-red-100 font-bold"
@@ -1189,7 +1267,7 @@ const ReportIssue = () => {
                         <Button 
                           type="button" 
                           onClick={() => {
-                            setVoiceState('IDLE');
+                            updateVoiceState('IDLE');
                             setVoiceErrorMessage('');
                             const el = document.getElementById('issue-description-input');
                             if (el) el.focus();
@@ -1219,7 +1297,7 @@ const ReportIssue = () => {
               <div className="flex justify-end mt-auto pt-4 border-t border-slate-100">
                 <Button 
                   onClick={() => {
-                    if (voiceState === 'RECORDING') stopRecording();
+                    if (voiceStateRef.current === 'RECORDING') stopVoiceRecording();
                     setStep(2);
                   }} 
                   disabled={!category || !description.trim() || description.trim().length < 5} 

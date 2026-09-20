@@ -270,6 +270,10 @@ export function startNativeSpeechRecognition(
     stop: () => {
       userStopped = true;
       try {
+        recognition.onstart = null;
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
         recognition.stop();
       } catch {}
       const finalTrimmed = (accumulatedFinal || currentInterim).trim();
