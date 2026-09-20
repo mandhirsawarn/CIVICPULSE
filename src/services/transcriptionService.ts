@@ -178,8 +178,9 @@ export function startNativeSpeechRecognition(
   recognition.interimResults = true;
   recognition.maxAlternatives = 3;
 
-  let accumulatedFinal = '';
-  let currentInterim = '';
+  let persistentFinalTranscript = '';
+  let lastFinalSegment = '';
+  let lastInterim = '';
   let userStopped = false;
 
   recognition.onstart = () => {
@@ -187,27 +188,38 @@ export function startNativeSpeechRecognition(
   };
 
   recognition.onresult = (event: any) => {
-    currentInterim = '';
+    let interimTranscript = '';
+
     for (let i = event.resultIndex; i < event.results.length; ++i) {
       const res = event.results[i];
-      const segment = (res[0]?.transcript || '').trim();
+      const rawSegment = res[0]?.transcript || '';
+      const segment = rawSegment.trim();
       if (!segment) continue;
 
       if (res.isFinal) {
-        accumulatedFinal = accumulatedFinal ? `${accumulatedFinal} ${segment}` : segment;
+        // Prevent duplicate consecutive final segments emitted by mobile speech recognition bug
+        if (segment !== lastFinalSegment) {
+          persistentFinalTranscript = persistentFinalTranscript
+            ? `${persistentFinalTranscript} ${segment}`
+            : segment;
+          lastFinalSegment = segment;
+        }
       } else {
-        currentInterim = currentInterim ? `${currentInterim} ${segment}` : segment;
+        interimTranscript = interimTranscript ? `${interimTranscript} ${segment}` : segment;
       }
     }
 
-    const livePreview = currentInterim
-      ? (accumulatedFinal ? `${accumulatedFinal} ${currentInterim}` : currentInterim)
-      : accumulatedFinal;
+    lastInterim = interimTranscript;
 
-    options.onInterim(currentInterim, livePreview);
+    // Live preview during recording: permanent finalized text + current interim phrase
+    const livePreview = interimTranscript
+      ? (persistentFinalTranscript ? `${persistentFinalTranscript} ${interimTranscript}` : interimTranscript)
+      : persistentFinalTranscript;
 
-    if (accumulatedFinal) {
-      options.onFinal(accumulatedFinal);
+    options.onInterim(interimTranscript, livePreview);
+
+    if (persistentFinalTranscript) {
+      options.onFinal(persistentFinalTranscript);
     }
   };
 
@@ -217,7 +229,7 @@ export function startNativeSpeechRecognition(
     if (errorType === 'aborted') return;
 
     if (errorType === 'no-speech') {
-      if (!accumulatedFinal && !currentInterim) {
+      if (!persistentFinalTranscript && !lastInterim) {
         options.onError('No speech was detected. Please try again.');
       }
       return;
@@ -250,9 +262,9 @@ export function startNativeSpeechRecognition(
   recognition.onend = () => {
     if (userStopped) return;
     if (options.onEnd) options.onEnd();
-    const finalTrimmed = (accumulatedFinal || currentInterim).trim();
-    if (finalTrimmed) {
-      options.onFinal(finalTrimmed);
+    const finalResult = (persistentFinalTranscript || lastInterim).trim();
+    if (finalResult) {
+      options.onFinal(finalResult);
     }
   };
 
@@ -276,9 +288,9 @@ export function startNativeSpeechRecognition(
         recognition.onend = null;
         recognition.stop();
       } catch {}
-      const finalTrimmed = (accumulatedFinal || currentInterim).trim();
-      if (finalTrimmed) {
-        options.onFinal(finalTrimmed);
+      const finalResult = (persistentFinalTranscript || lastInterim).trim();
+      if (finalResult) {
+        options.onFinal(finalResult);
       }
     },
     abort: () => {

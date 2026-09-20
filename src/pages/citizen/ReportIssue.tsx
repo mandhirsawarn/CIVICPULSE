@@ -121,6 +121,7 @@ const ReportIssue = () => {
   // Speech Recognition & Mobile Touch Guards
   const speechControllerRef = useRef<SpeechRecognitionController | null>(null);
   const latestTranscriptRef = useRef<string>('');
+  const finalTranscriptRef = useRef<string>('');
   const durationTimerRef = useRef<any>(null);
   const isStartingRef = useRef(false);
   const isStoppingRef = useRef(false);
@@ -288,6 +289,7 @@ const ReportIssue = () => {
       setVoiceErrorMessage('');
       setLiveTranscript('');
       latestTranscriptRef.current = '';
+      finalTranscriptRef.current = '';
 
       const controller = startNativeSpeechRecognition({
         language: selectedLanguage,
@@ -312,8 +314,9 @@ const ReportIssue = () => {
           if (!isMountedRef.current || recordingSessionIdRef.current !== currentSessionId) {
             return;
           }
-          setLiveTranscript(finalText);
+          finalTranscriptRef.current = finalText;
           latestTranscriptRef.current = finalText;
+          setLiveTranscript(finalText);
         },
         onError: (errMsg) => {
           if (!isMountedRef.current || recordingSessionIdRef.current !== currentSessionId) {
@@ -410,7 +413,8 @@ const ReportIssue = () => {
         return;
       }
 
-      const rawText = latestTranscriptRef.current.trim();
+      // Permanent finalized transcript without interim duplication
+      const rawText = (finalTranscriptRef.current || latestTranscriptRef.current).trim();
       if (!rawText) {
         updateVoiceState('ERROR');
         setVoiceErrorMessage('No speech was detected. Please try again.');
@@ -487,6 +491,7 @@ const ReportIssue = () => {
     setVoiceErrorMessage('');
     setLiveTranscript('');
     latestTranscriptRef.current = '';
+    finalTranscriptRef.current = '';
 
     // Wait until previous session has completely stopped before starting ONE new session
     setTimeout(() => {
@@ -558,6 +563,8 @@ const ReportIssue = () => {
     updateReportDraft({ description: '' });
     updateVoiceState('IDLE');
     setLiveTranscript('');
+    latestTranscriptRef.current = '';
+    finalTranscriptRef.current = '';
     setPendingTranscript(null);
     setShowMergeDialog(false);
   };
