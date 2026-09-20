@@ -214,6 +214,7 @@ export function startNativeSpeechRecognition(
   recognition.onerror = (event: any) => {
     if (userStopped) return;
     const errorType = event?.error;
+    if (errorType === 'aborted') return;
 
     if (errorType === 'no-speech') {
       if (!accumulatedFinal && !currentInterim) {
@@ -247,6 +248,7 @@ export function startNativeSpeechRecognition(
   };
 
   recognition.onend = () => {
+    if (userStopped) return;
     if (options.onEnd) options.onEnd();
     const finalTrimmed = (accumulatedFinal || currentInterim).trim();
     if (finalTrimmed) {
@@ -278,6 +280,10 @@ export function startNativeSpeechRecognition(
     abort: () => {
       userStopped = true;
       try {
+        recognition.onstart = null;
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
         recognition.abort();
       } catch {}
     }

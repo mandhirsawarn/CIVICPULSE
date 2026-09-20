@@ -104,9 +104,9 @@ const ReportIssue = () => {
   const [contactEmail, setContactEmail] = useState('');
   const [phoneError, setPhoneError] = useState('');
 
-  // Voice Recording & Speech-to-Text State Machine (100% Browser SpeechRecognition)
-  // States: 'IDLE' | 'RECORDING' | 'TRANSCRIBED' | 'ERROR'
-  type VoiceState = 'IDLE' | 'RECORDING' | 'TRANSCRIBED' | 'ERROR';
+  // Voice Recording & Speech-to-Text Strict State Machine (100% Browser SpeechRecognition)
+  // Strict States: 'IDLE' -> 'RECORDING' -> 'PROCESSING' -> 'TRANSCRIBED' -> 'IDLE'
+  type VoiceState = 'IDLE' | 'RECORDING' | 'PROCESSING' | 'TRANSCRIBED' | 'ERROR';
   const [voiceState, setVoiceState] = useState<VoiceState>('IDLE');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [selectedLanguage, setSelectedLanguage] = useState('auto');
@@ -118,10 +118,20 @@ const ReportIssue = () => {
   const [hasUsedVoice, setHasUsedVoice] = useState(false);
   const [isEditingReviewDesc, setIsEditingReviewDesc] = useState(false);
 
-  // Speech Recognition refs
+  // Speech Recognition & Mobile Touch Guards
   const speechControllerRef = useRef<SpeechRecognitionController | null>(null);
   const latestTranscriptRef = useRef<string>('');
   const durationTimerRef = useRef<any>(null);
+  const isStartingRef = useRef(false);
+  const isStoppingRef = useRef(false);
+  const isActionLockedRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const voiceStateRef = useRef<VoiceState>('IDLE');
+
+  const updateVoiceState = (newState: VoiceState) => {
+    voiceStateRef.current = newState;
+    setVoiceState(newState);
+  };
 
   // AI & Submission states
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -230,7 +240,29 @@ const ReportIssue = () => {
   };
 
   const startRecording = () => {
+    // Guard: never start duplicate sessions or start while processing/stopping
+    if (isStartingRef.current || isStoppingRef.current || isActionLockedRef.current) {
+      return;
+    }
+    if (voiceStateRef.current === 'RECORDING' || voiceStateRef.current === 'PROCESSING') {
+      return;
+    }
+
+    isStartingRef.current = true;
+
     try {
+      // Clear any previous controller
+      if (speechControllerRef.current) {
+        try {
+          speechControllerRef.current.abort();
+        } catch {}
+        speechControllerRef.current = null;
+      }
+      if (durationTimerRef.current) {
+        clearInterval(durationTimerRef.current);
+        durationTimerRef.current = null;
+      }
+
       setVoiceErrorMessage('');
       setLiveTranscript('');
       latestTranscriptRef.current = '';
@@ -238,38 +270,60 @@ const ReportIssue = () => {
       const controller = startNativeSpeechRecognition({
         language: selectedLanguage,
         onStart: () => {
-          setVoiceState('RECORDING');
+          if (!isMountedRef.current) return;
+          updateVoiceState('RECORDING');
           setRecordingDuration(0);
           setHasUsedVoice(true);
+          isStartingRef.current = false;
         },
         onInterim: (_interim, fullPreview) => {
+          if (!isMountedRef.current) return;
           setLiveTranscript(fullPreview);
           latestTranscriptRef.current = fullPreview;
         },
         onFinal: (finalText) => {
+          if (!isMountedRef.current) return;
           setLiveTranscript(finalText);
           latestTranscriptRef.current = finalText;
         },
         onError: (errMsg) => {
+          if (!isMountedRef.current) return;
           console.warn('[ReportIssue] Voice notice:', errMsg);
-          setVoiceState('ERROR');
+          isStartingRef.current = false;
+          isStoppingRef.current = false;
+          updateVoiceState('ERROR');
           setVoiceErrorMessage(errMsg);
           if (durationTimerRef.current) {
             clearInterval(durationTimerRef.current);
             durationTimerRef.current = null;
           }
+          if (speechControllerRef.current) {
+            speechControllerRef.current = null;
+          }
         },
         onEnd: () => {
-          // Final handling in stopRecording
+          // Engine ended naturally (e.g. mobile pause/silence)
+          if (!isMountedRef.current) return;
+          isStartingRef.current = false;
+          // If still marked as recording when engine terminates, finalize gracefully into PROCESSING -> TRANSCRIBED
+          if (voiceStateRef.current === 'RECORDING' && !isStoppingRef.current) {
+            stopRecording();
+          }
         }
       });
 
-      if (!controller) return;
+      if (!controller) {
+        isStartingRef.current = false;
+        return;
+      }
+
       speechControllerRef.current = controller;
 
+      // Start duration timer
       if (durationTimerRef.current) clearInterval(durationTimerRef.current);
       const startTime = Date.now();
       durationTimerRef.current = setInterval(() => {
+        if (!isMountedRef.current) return;
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         setRecordingDuration(elapsed);
         // Automatically stop recording at 60 seconds (maximum limit)
@@ -279,59 +333,122 @@ const ReportIssue = () => {
       }, 1000);
     } catch (err: any) {
       console.error('[Voice] Error starting speech recognition:', err);
-      setVoiceState('ERROR');
+      isStartingRef.current = false;
+      updateVoiceState('ERROR');
       setVoiceErrorMessage('Voice transcription could not start. Please check microphone permission.');
     }
   };
 
   const stopRecording = () => {
+    if (isStoppingRef.current) return;
+    isStoppingRef.current = true;
+    updateVoiceState('PROCESSING');
+
+    // Clear duration timer
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+
+    // Stop speech controller safely
+    if (speechControllerRef.current) {
+      try {
+        speechControllerRef.current.stop();
+      } catch {}
+      speechControllerRef.current = null;
+    }
+
+    // Allow browser audio engine results to settle
+    setTimeout(() => {
+      if (!isMountedRef.current) return;
+
+      const rawText = latestTranscriptRef.current.trim();
+      if (!rawText) {
+        updateVoiceState('ERROR');
+        setVoiceErrorMessage('No speech was detected. Please try again.');
+        isStoppingRef.current = false;
+        return;
+      }
+
+      const formattedText = formatTranscript(rawText);
+      const lang = detectLanguageFromText(formattedText);
+      setDetectedLanguage(lang);
+
+      const finalDescription = formattedText;
+
+      if (description && description.trim() && description.trim() !== finalDescription) {
+        setPendingTranscript(finalDescription);
+        setShowMergeDialog(true);
+        updateVoiceState('TRANSCRIBED');
+      } else {
+        setDescription(finalDescription);
+        updateReportDraft({ description: finalDescription });
+        updateVoiceState('TRANSCRIBED');
+      }
+
+      // Direct AI analysis with the fresh transcript
+      try {
+        runAnalysis(finalDescription);
+      } catch (aiErr) {
+        console.warn('[ReportIssue] AI analysis notice:', aiErr);
+      }
+
+      isStoppingRef.current = false;
+    }, 150);
+  };
+
+  // Record Again: Explicit user action only. Cleans up previous session before starting exactly ONE new session.
+  const handleRecordAgain = () => {
+    if (isActionLockedRef.current || isStartingRef.current || isStoppingRef.current) return;
+    isActionLockedRef.current = true;
+
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
       durationTimerRef.current = null;
     }
 
     if (speechControllerRef.current) {
-      speechControllerRef.current.stop();
+      try {
+        speechControllerRef.current.abort();
+      } catch {}
       speechControllerRef.current = null;
     }
 
-    const rawText = latestTranscriptRef.current.trim();
-    if (!rawText) {
-      setVoiceState('ERROR');
-      setVoiceErrorMessage('No speech was detected. Please try again.');
-      return;
-    }
-
-    const formattedText = formatTranscript(rawText);
-    const lang = detectLanguageFromText(formattedText);
-    setDetectedLanguage(lang);
-
-    const finalDescription = formattedText;
-
-    if (description && description.trim() && description.trim() !== finalDescription) {
-      setPendingTranscript(finalDescription);
-      setShowMergeDialog(true);
-      setVoiceState('TRANSCRIBED');
-    } else {
-      setDescription(finalDescription);
-      updateReportDraft({ description: finalDescription });
-      setVoiceState('TRANSCRIBED');
-    }
-
-    // Direct AI analysis with the fresh transcript
-    try {
-      runAnalysis(finalDescription);
-    } catch (aiErr) {
-      console.warn('[ReportIssue] AI analysis notice:', aiErr);
-    }
-  };
-
-  const handleRecordAgain = () => {
-    setVoiceState('IDLE');
+    updateVoiceState('IDLE');
     setVoiceErrorMessage('');
     setLiveTranscript('');
     latestTranscriptRef.current = '';
-    startRecording();
+
+    // Wait until previous session has completely stopped before starting ONE new session
+    setTimeout(() => {
+      isActionLockedRef.current = false;
+      if (isMountedRef.current) {
+        startRecording();
+      }
+    }, 200);
+  };
+
+  // Centralized microphone button tap handler adhering to strict state machine
+  const handleMicButtonClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isActionLockedRef.current) return;
+
+    if (voiceState === 'IDLE') {
+      startRecording();
+    } else if (voiceState === 'RECORDING') {
+      stopRecording();
+    } else if (voiceState === 'PROCESSING') {
+      // Ignore microphone action while processing
+      return;
+    } else if (voiceState === 'TRANSCRIBED') {
+      // In TRANSCRIBED state, do NOT start automatically.
+      // Record Again is the only explicit button.
+      return;
+    } else if (voiceState === 'ERROR') {
+      handleRecordAgain();
+    }
   };
 
   const handleMergeReplace = () => {
@@ -361,7 +478,7 @@ const ReportIssue = () => {
   const handleClearDescription = () => {
     setDescription('');
     updateReportDraft({ description: '' });
-    setVoiceState('IDLE');
+    updateVoiceState('IDLE');
     setLiveTranscript('');
     setPendingTranscript(null);
     setShowMergeDialog(false);
@@ -369,10 +486,19 @@ const ReportIssue = () => {
 
   // Cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+      isMountedRef.current = false;
+      isStartingRef.current = false;
+      isStoppingRef.current = false;
+      if (durationTimerRef.current) {
+        clearInterval(durationTimerRef.current);
+        durationTimerRef.current = null;
+      }
       if (speechControllerRef.current) {
-        speechControllerRef.current.abort();
+        try {
+          speechControllerRef.current.abort();
+        } catch {}
         speechControllerRef.current = null;
       }
     };
@@ -894,16 +1020,30 @@ const ReportIssue = () => {
                       {voiceState === 'RECORDING' ? (
                         <button
                           type="button"
-                          onClick={stopRecording}
+                          onClick={handleMicButtonClick}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white shadow-md animate-pulse hover:bg-red-700 transition-all focus:outline-none cursor-pointer"
                           title="Stop Recording"
                         >
                           <Square size={16} className="fill-white" />
                         </button>
+                      ) : voiceState === 'PROCESSING' ? (
+                        <div
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-200/80 shadow-2xs"
+                          title="Processing speech..."
+                        >
+                          <Loader2 size={18} className="animate-spin text-blue-600" />
+                        </div>
+                      ) : voiceState === 'TRANSCRIBED' ? (
+                        <div
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200/80 shadow-2xs select-none"
+                          title="Voice converted to text"
+                        >
+                          <CheckCircle2 size={20} className="text-emerald-600" />
+                        </div>
                       ) : (
                         <button
                           type="button"
-                          onClick={startRecording}
+                          onClick={handleMicButtonClick}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all shadow-xs focus:outline-none bg-slate-900 text-white hover:bg-slate-800 hover:-translate-y-0.5 cursor-pointer"
                           title="Record Voice"
                         >
@@ -924,6 +1064,12 @@ const ReportIssue = () => {
                               </span>
                             </>
                           )}
+                          {voiceState === 'PROCESSING' && (
+                            <span className="text-blue-600 flex items-center gap-1.5">
+                              <Loader2 size={15} className="animate-spin text-blue-600" />
+                              Converting voice to text...
+                            </span>
+                          )}
                           {voiceState === 'TRANSCRIBED' && (
                             <span className="text-emerald-700 flex items-center gap-1.5">
                               <CheckCircle2 size={16} className="text-emerald-600" /> Voice converted to text
@@ -943,6 +1089,7 @@ const ReportIssue = () => {
 
                         <p className="text-xs text-slate-500 mt-0.5">
                           {voiceState === 'RECORDING' && "Speak clearly. Live transcript will appear below. Max 60 seconds."}
+                          {voiceState === 'PROCESSING' && "Finalizing speech transcription..."}
                           {voiceState === 'TRANSCRIBED' && "Transcript populated in description above. You can edit it freely."}
                           {voiceState === 'ERROR' && (voiceErrorMessage || "Voice transcription is unavailable.")}
                           {voiceState === 'IDLE' && "Voice transcription uses your browser's speech recognition."}
@@ -956,7 +1103,7 @@ const ReportIssue = () => {
                       <select
                         value={selectedLanguage}
                         onChange={(e) => setSelectedLanguage(e.target.value)}
-                        disabled={voiceState === 'RECORDING'}
+                        disabled={voiceState === 'RECORDING' || voiceState === 'PROCESSING'}
                         className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-slate-900 cursor-pointer disabled:opacity-60 font-semibold shadow-2xs"
                       >
                         <option value="auto">Auto Detect</option>
